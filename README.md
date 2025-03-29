@@ -1,15 +1,12 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/LaurieWired/GhidraMCP)](https://github.com/LaurieWired/GhidraMCP/releases)
-[![GitHub stars](https://img.shields.io/github/stars/LaurieWired/GhidraMCP)](https://github.com/LaurieWired/GhidraMCP/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/LaurieWired/GhidraMCP)](https://github.com/LaurieWired/GhidraMCP/network/members)
-[![GitHub contributors](https://img.shields.io/github/contributors/LaurieWired/GhidraMCP)](https://github.com/LaurieWired/GhidraMCP/graphs/contributors)
-[![Follow @lauriewired](https://img.shields.io/twitter/follow/lauriewired?style=social)](https://twitter.com/lauriewired)
+[![GitHub stars](https://img.shields.io/github/stars/JulianDavis/GhidraMCP)](https://github.com/JulianDavis/GhidraMCP/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/JulianDavis/GhidraMCP)](https://github.com/JulianDavis/GhidraMCP/network/members)
 
 ![ghidra_MCP_logo](https://github.com/user-attachments/assets/4986d702-be3f-4697-acce-aea55cd79ad3)
 
 
-# ghidraMCP
-ghidraMCP is an Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
+# GhidraMCP with JSON Responses
+This is a fork of [LaurieWired's GhidraMCP](https://github.com/LaurieWired/GhidraMCP) with improved JSON responses for all endpoints. It is a Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
 
 https://github.com/user-attachments/assets/36080514-f227-44bd-af84-78e29ee1d7f9
 
@@ -20,6 +17,9 @@ MCP Server + Ghidra Plugin
 - Decompile and analyze binaries in Ghidra
 - Automatically rename methods and data
 - List methods, classes, imports, and exports
+- **All endpoints return JSON responses with consistent structure**
+- **Pagination metadata included in all list responses**
+- **Enhanced data fields in all responses**
 
 # Installation
 
@@ -29,7 +29,7 @@ MCP Server + Ghidra Plugin
 - MCP [SDK](https://github.com/modelcontextprotocol/python-sdk)
 
 ## Ghidra
-First, download the latest [release](https://github.com/LaurieWired/GhidraMCP/releases) from this repository. This contains the Ghidra plugin and Python MCP client. Then, you can directly import the plugin into Ghidra.
+First, download the latest release from this repository. This contains the Ghidra plugin and Python MCP client. Then, you can directly import the plugin into Ghidra.
 
 1. Run Ghidra
 2. Select `File` -> `Install Extensions`
@@ -47,7 +47,7 @@ https://github.com/user-attachments/assets/75f0c176-6da1-48dc-ad96-c182eb4648c3
 
 ## MCP Clients
 
-Theoretically, any MCP client should work with ghidraMCP.  Two examples are given below.
+Theoretically, any MCP client should work with ghidraMCP. Two examples are given below.
 
 ## Example 1: Claude Desktop
 To set up Claude Desktop as a Ghidra MCP client, go to `Claude` -> `Settings` -> `Developer` -> `Edit Config` -> `claude_desktop_config.json` and add the following:
@@ -77,6 +77,37 @@ Another MCP client that supports multiple models on the backend is [5ire](https:
 2. Name: GhidraMCP
 3. Command: `python /ABSOLUTE_PATH_TO/bridge_mcp_ghidra.py`
 
+# JSON Response Format
+All endpoints now return JSON responses with a consistent structure:
+
+## List Endpoints
+```json
+{
+  "items": [
+    {
+      "name": "example_function",
+      "address": "0x12345678",
+      "signature": "void example_function(int param1)",
+      "returnType": "void",
+      "parameterCount": 1
+    },
+    ...
+  ],
+  "total": 100,
+  "offset": 0,
+  "limit": 10,
+  "success": true
+}
+```
+
+## Error Responses
+```json
+{
+  "success": false,
+  "error": "Error message here"
+}
+```
+
 # Building from Source
 Build with Maven by running:
 
@@ -87,3 +118,6 @@ The generated zip file includes the built Ghidra plugin and its resources. These
 - lib/GhidraMCP.jar
 - extensions.properties
 - Module.manifest
+
+# Original Project
+This is a fork of [LaurieWired's GhidraMCP](https://github.com/LaurieWired/GhidraMCP). All credit for the original implementation goes to the original author.
