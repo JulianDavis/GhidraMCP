@@ -230,15 +230,36 @@ public class GhidraMCPPlugin extends Plugin {
             sendJsonResponse(exchange, searchMemoryPattern(patternHex, searchExecutable, searchReadable, caseSensitive, maxResults));
         });
         
-        // Memory cross-reference finder endpoint
-        server.createContext("/memory/findReferences", exchange -> {
+        // Memory cross-reference finder endpoint (scan memory for potential references)
+        server.createContext("/memory/findPotentialReferences", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String targetAddress = params.get("address");
             boolean searchExecutable = Boolean.parseBoolean(params.getOrDefault("executable", "false"));
             boolean searchReadable = Boolean.parseBoolean(params.getOrDefault("readable", "true"));
             int maxResults = Integer.parseInt(params.getOrDefault("maxResults", "100"));
             
-            sendJsonResponse(exchange, findMemoryReferences(targetAddress, searchExecutable, searchReadable, maxResults));
+            sendJsonResponse(exchange, findPotentialMemoryReferences(targetAddress, searchExecutable, searchReadable, maxResults));
+        });
+        
+        // Known references finder endpoint (using Ghidra's ReferenceManager)
+        server.createContext("/memory/getKnownReferences", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String targetAddress = params.get("address");
+            
+            sendJsonResponse(exchange, getKnownMemoryReferences(targetAddress));
+        });
+        
+        // Combined references finder endpoint (both known and potential)
+        server.createContext("/memory/getAllReferences", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String targetAddress = params.get("address");
+            boolean includeMemoryScan = Boolean.parseBoolean(params.getOrDefault("includeMemoryScan", "true"));
+            boolean searchExecutable = Boolean.parseBoolean(params.getOrDefault("executable", "false"));
+            boolean searchReadable = Boolean.parseBoolean(params.getOrDefault("readable", "true"));
+            int maxResults = Integer.parseInt(params.getOrDefault("maxResults", "100"));
+            
+            sendJsonResponse(exchange, getAllMemoryReferences(
+                targetAddress, includeMemoryScan, searchExecutable, searchReadable, maxResults));
         });
         
         // Initialize and register emulator endpoints
@@ -841,7 +862,8 @@ public class GhidraMCPPlugin extends Plugin {
     }
 
     /**
-     * Find all memory locations that reference a specific address
+     * Find potential memory locations that reference a specific address by scanning memory.
+     * This can find references not tracked by Ghidra, but is much slower and may produce false positives.
      * 
      * @param targetAddressStr The target address to find references to (as a string)
      * @param searchExecutable Whether to search only in executable memory
@@ -849,7 +871,7 @@ public class GhidraMCPPlugin extends Plugin {
      * @param maxResults Maximum number of results to return
      * @return Map containing the search results
      */
-    private Map<String, Object> findMemoryReferences(
+    private Map<String, Object> findPotentialMemoryReferences(
             String targetAddressStr,
             boolean searchExecutable,
             boolean searchReadable,
@@ -872,7 +894,7 @@ public class GhidraMCPPlugin extends Plugin {
             }
             
             // Get the search results
-            List<Map<String, Object>> results = MemoryCrossReferenceService.findReferences(
+            List<Map<String, Object>> results = MemoryCrossReferenceService.findPotentialReferences(
                     program, 
                     targetAddressStr, 
                     searchExecutable, 
@@ -928,7 +950,7 @@ public class GhidraMCPPlugin extends Plugin {
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("targetAddress", targetAddressStr);
-            response.put("references", results);
+            response.put("potentialReferences", results);
             response.put("count", results.size());
             
             if (maxResults > 0 && results.size() >= maxResults) {
@@ -944,8 +966,121 @@ public class GhidraMCPPlugin extends Plugin {
             
             return response;
         } catch (Exception e) {
-            Msg.error(this, "Error finding memory references", e);
-            return createErrorResponse("Error finding memory references: " + e.getMessage());
+            Msg.error(this, "Error finding potential memory references", e);
+            return createErrorResponse("Error finding potential memory references: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get known references to a target address using Ghidra's ReferenceManager.
+     * This is fast and should be the primary method for finding references.
+     * 
+     * @param targetAddressStr The target address to find references to (as a string)
+     * @return Map containing the known references
+     */
+    private Map<String, Object> getKnownMemoryReferences(String targetAddressStr) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (targetAddressStr == null || targetAddressStr.isEmpty()) {
+            return createErrorResponse("Target address is required");
+        }
+        
+        try {
+            // Validate the address
+            Address targetAddress = program.getAddressFactory().getAddress(targetAddressStr);
+            if (targetAddress == null) {
+                return createErrorResponse("Invalid target address: " + targetAddressStr);
+            }
+            
+            // Get the known references from the reference manager
+            List<Map<String, Object>> knownRefs = MemoryCrossReferenceService.getKnownReferences(
+                    program, targetAddressStr, TaskMonitor.DUMMY);
+            
+            // Sort results by address
+            knownRefs.sort((a, b) -> {
+                String addrA = (String) a.get("referenceAddress");
+                String addrB = (String) b.get("referenceAddress");
+                return addrA.compareTo(addrB);
+            });
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("targetAddress", targetAddressStr);
+            response.put("knownReferences", knownRefs);
+            response.put("count", knownRefs.size());
+            
+            // Get code unit at target address for context
+            CodeUnit targetCodeUnit = program.getListing().getCodeUnitAt(targetAddress);
+            if (targetCodeUnit != null) {
+                response.put("targetCodeUnitType", targetCodeUnit.getClass().getSimpleName());
+                response.put("targetMnemonic", targetCodeUnit.getMnemonicString());
+            }
+            
+            // Check if target is a function
+            Function func = program.getFunctionManager().getFunctionAt(targetAddress);
+            if (func != null) {
+                response.put("targetFunction", Map.of(
+                    "name", func.getName(),
+                    "signature", func.getSignature().toString(),
+                    "returnType", func.getReturnType().toString()
+                ));
+            }
+            
+            return response;
+        } catch (Exception e) {
+            Msg.error(this, "Error finding known references", e);
+            return createErrorResponse("Error finding known references: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Find all references to a target address, both known and potential.
+     * First gets references from Ghidra's ReferenceManager, then optionally scans memory.
+     * 
+     * @param targetAddressStr The target address to find references to (as a string)
+     * @param includeMemoryScan Whether to include a memory scan for potential references
+     * @param searchExecutable For memory scan: whether to search only in executable memory
+     * @param searchReadable For memory scan: whether to search only in readable memory
+     * @param maxResults For memory scan: maximum number of results to return
+     * @return Map containing both known and potential references
+     */
+    private Map<String, Object> getAllMemoryReferences(
+            String targetAddressStr,
+            boolean includeMemoryScan,
+            boolean searchExecutable,
+            boolean searchReadable,
+            int maxResults) {
+        
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (targetAddressStr == null || targetAddressStr.isEmpty()) {
+            return createErrorResponse("Target address is required");
+        }
+        
+        try {
+            // Get the combined search results
+            Map<String, Object> results = MemoryCrossReferenceService.findAllReferences(
+                    program, 
+                    targetAddressStr,
+                    includeMemoryScan,
+                    searchExecutable, 
+                    searchReadable, 
+                    maxResults, 
+                    TaskMonitor.DUMMY);
+            
+            // Add a timestamp for client caching
+            results.put("timestamp", System.currentTimeMillis());
+            
+            return results;
+        } catch (Exception e) {
+            Msg.error(this, "Error finding all memory references", e);
+            return createErrorResponse("Error finding all memory references: " + e.getMessage());
         }
     }
     

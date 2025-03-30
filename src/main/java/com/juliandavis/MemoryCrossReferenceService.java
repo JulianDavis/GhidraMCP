@@ -4,10 +4,15 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressRange;
 import ghidra.program.model.address.AddressRangeImpl;
 import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.ReferenceIterator;
+import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 
@@ -17,12 +22,113 @@ import java.util.*;
 
 /**
  * Service for finding cross-references to memory addresses in Ghidra.
- * Provides methods to scan memory for potential references to a target address or address range.
+ * Provides methods to:
+ * 1. Get known references from Ghidra's ReferenceManager
+ * 2. Scan memory for potential references not tracked by Ghidra
  */
 public class MemoryCrossReferenceService {
 
     /**
-     * Find all memory locations that potentially reference a target address.
+     * Get all known references to a target address using Ghidra's ReferenceManager.
+     * This is fast and should be the primary method for finding references.
+     * 
+     * @param program The program to search in
+     * @param targetAddressStr The target address to find references to (as a string)
+     * @param monitor Task monitor for tracking progress (can be null)
+     * @return List of references found in Ghidra's reference database
+     */
+    public static List<Map<String, Object>> getKnownReferences(
+            Program program, 
+            String targetAddressStr,
+            TaskMonitor monitor) {
+        
+        List<Map<String, Object>> results = new ArrayList<>();
+        
+        if (program == null || targetAddressStr == null || targetAddressStr.isEmpty()) {
+            return results;
+        }
+        
+        try {
+            // Parse target address
+            Address targetAddress = program.getAddressFactory().getAddress(targetAddressStr);
+            if (targetAddress == null) {
+                throw new IllegalArgumentException("Invalid target address: " + targetAddressStr);
+            }
+            
+            // Set up progress monitoring
+            TaskMonitor taskMonitor = monitor != null ? monitor : TaskMonitor.DUMMY;
+            
+            // Get the ReferenceManager and all references to the target address
+            ReferenceManager refManager = program.getReferenceManager();
+            ReferenceIterator refIter = refManager.getReferencesTo(targetAddress);
+            
+            Listing listing = program.getListing();
+            
+            while (refIter.hasNext() && !taskMonitor.isCancelled()) {
+                Reference ref = refIter.next();
+                Address fromAddress = ref.getFromAddress();
+                
+                // Create result map with reference details
+                Map<String, Object> result = new HashMap<>();
+                result.put("referenceAddress", fromAddress.toString());
+                result.put("targetAddress", targetAddress.toString());
+                result.put("referenceType", ref.getReferenceType().toString());
+                result.put("isPrimary", ref.isPrimary());
+                result.put("isOffsetReference", ref.isOffsetReference());
+                result.put("offset", ref.getOperandIndex());
+                
+                // Try to get code unit information at the reference address
+                CodeUnit codeUnit = listing.getCodeUnitAt(fromAddress);
+                if (codeUnit != null) {
+                    result.put("codeUnitMnemonic", codeUnit.getMnemonicString());
+                    
+                    // Get context around the reference
+                    try {
+                        StringBuilder context = new StringBuilder();
+                        // Try to get a few code units before and after the reference
+                        for (int i = -2; i <= 2; i++) {
+                            Address contextAddr = fromAddress.add(i * 4); // Approximate instruction size
+                            if (program.getMemory().contains(contextAddr)) {
+                                CodeUnit cu = listing.getCodeUnitAt(contextAddr);
+                                if (cu != null) {
+                                    if (i == 0) {
+                                        context.append(" --> ");
+                                    } else {
+                                        context.append("     ");
+                                    }
+                                    context.append(cu.toString()).append("\n");
+                                }
+                            }
+                        }
+                        result.put("context", context.toString().trim());
+                    } catch (Exception e) {
+                        // If we can't get the context, just continue
+                    }
+                }
+                
+                // Get block information
+                MemoryBlock block = program.getMemory().getBlock(fromAddress);
+                if (block != null) {
+                    result.put("blockName", block.getName());
+                    result.put("blockPermissions", String.format("%s%s%s",
+                            block.isRead() ? "r" : "-",
+                            block.isWrite() ? "w" : "-",
+                            block.isExecute() ? "x" : "-"));
+                }
+                
+                results.add(result);
+            }
+            
+            return results;
+        } catch (Exception e) {
+            Msg.error(MemoryCrossReferenceService.class, "Error finding known references", e);
+            return results;
+        }
+    }
+
+    /**
+     * Find potential references to a target address by scanning memory.
+     * This can find references not tracked by Ghidra, but is much slower and may produce false positives.
      * 
      * @param program The program to search in
      * @param targetAddressStr The target address to find references to (as a string)
@@ -30,9 +136,9 @@ public class MemoryCrossReferenceService {
      * @param searchOnlyReadable Whether to search only in readable memory
      * @param maxResults Maximum number of results to return (0 for unlimited)
      * @param monitor Task monitor for tracking progress (can be null)
-     * @return List of addresses where references were found
+     * @return List of addresses where potential references were found
      */
-    public static List<Map<String, Object>> findReferences(
+    public static List<Map<String, Object>> findPotentialReferences(
             Program program, 
             String targetAddressStr, 
             boolean searchOnlyExecutable, 
@@ -86,6 +192,9 @@ public class MemoryCrossReferenceService {
             long bytesSearched = 0;
             int resultCount = 0;
             
+            // Get listing for code unit information
+            Listing listing = program.getListing();
+            
             // Search through each memory block
             for (AddressRange range : searchSet) {
                 Address start = range.getMinAddress();
@@ -127,6 +236,7 @@ public class MemoryCrossReferenceService {
                         result.put("referenceAddress", refAddress.toString());
                         result.put("targetAddress", targetAddress.toString());
                         result.put("referenceType", "DATA"); // Default to data reference
+                        result.put("discovered", true); // Mark as discovered by memory scan
                         
                         // Try to get the containing memory block
                         MemoryBlock block = memory.getBlock(refAddress);
@@ -141,6 +251,12 @@ public class MemoryCrossReferenceService {
                             if (block.isExecute()) {
                                 result.put("referenceType", "CODE");
                             }
+                        }
+                        
+                        // Try to get code unit information
+                        CodeUnit codeUnit = listing.getCodeUnitAt(refAddress);
+                        if (codeUnit != null) {
+                            result.put("codeUnitMnemonic", codeUnit.getMnemonicString());
                         }
                         
                         // Get context around the reference
@@ -185,7 +301,7 @@ public class MemoryCrossReferenceService {
             
             return results;
         } catch (Exception e) {
-            Msg.error(MemoryCrossReferenceService.class, "Error finding references", e);
+            Msg.error(MemoryCrossReferenceService.class, "Error finding potential references", e);
             return results;
         }
     }
@@ -261,5 +377,92 @@ public class MemoryCrossReferenceService {
             size += range.getLength();
         }
         return size;
+    }
+    
+    /**
+     * Combined reference search that first gets known references, then performs a memory scan if requested.
+     * 
+     * @param program The program to search in
+     * @param targetAddressStr The target address to find references to (as a string)
+     * @param includeMemoryScan Whether to perform a memory scan for potential references
+     * @param searchOnlyExecutable For memory scan: whether to search only in executable memory
+     * @param searchOnlyReadable For memory scan: whether to search only in readable memory
+     * @param maxScanResults For memory scan: maximum number of results to return (0 for unlimited)
+     * @param monitor Task monitor for tracking progress (can be null)
+     * @return Combined list of both known and discovered references
+     */
+    public static Map<String, Object> findAllReferences(
+            Program program, 
+            String targetAddressStr,
+            boolean includeMemoryScan,
+            boolean searchOnlyExecutable,
+            boolean searchOnlyReadable,
+            int maxScanResults,
+            TaskMonitor monitor) {
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // First, get known references from the ReferenceManager
+            List<Map<String, Object>> knownRefs = getKnownReferences(program, targetAddressStr, monitor);
+            
+            List<Map<String, Object>> discoveredRefs = new ArrayList<>();
+            
+            // Then, if requested, scan memory for additional potential references
+            if (includeMemoryScan) {
+                discoveredRefs = findPotentialReferences(
+                        program, 
+                        targetAddressStr, 
+                        searchOnlyExecutable, 
+                        searchOnlyReadable, 
+                        maxScanResults, 
+                        monitor);
+                
+                // Filter out any discovered references that match known references
+                // to avoid duplicates
+                Set<String> knownAddresses = new HashSet<>();
+                for (Map<String, Object> ref : knownRefs) {
+                    knownAddresses.add((String)ref.get("referenceAddress"));
+                }
+                
+                List<Map<String, Object>> uniqueDiscoveredRefs = new ArrayList<>();
+                for (Map<String, Object> ref : discoveredRefs) {
+                    String addr = (String)ref.get("referenceAddress");
+                    if (!knownAddresses.contains(addr)) {
+                        uniqueDiscoveredRefs.add(ref);
+                    }
+                }
+                
+                discoveredRefs = uniqueDiscoveredRefs;
+            }
+            
+            // Address validation for better error reporting
+            Address targetAddress = program.getAddressFactory().getAddress(targetAddressStr);
+            
+            result.put("targetAddress", targetAddressStr);
+            result.put("targetAddressValid", targetAddress != null);
+            result.put("knownReferences", knownRefs);
+            result.put("knownReferenceCount", knownRefs.size());
+            
+            if (includeMemoryScan) {
+                result.put("discoveredReferences", discoveredRefs);
+                result.put("discoveredReferenceCount", discoveredRefs.size());
+                result.put("memorySearchCriteria", Map.of(
+                    "searchOnlyExecutable", searchOnlyExecutable,
+                    "searchOnlyReadable", searchOnlyReadable,
+                    "maxResults", maxScanResults
+                ));
+            }
+            
+            result.put("totalReferenceCount", knownRefs.size() + discoveredRefs.size());
+            result.put("success", true);
+            
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("error", e.getMessage());
+            Msg.error(MemoryCrossReferenceService.class, "Error finding references", e);
+        }
+        
+        return result;
     }
 }
