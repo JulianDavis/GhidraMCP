@@ -23,6 +23,10 @@ This checklist outlines the planned enhancements to the Ghidra Model Context Pro
 - [ ] Support for automated variable renaming suggestions
 - [x] Implement memory pattern search functionality
 - [x] Add memory cross-reference finder
+  - [x] Implement ReferenceManager integration for known references
+  - [x] Create memory scanning for potential references not tracked by Ghidra
+  - [x] Add combined approach with configurable options
+  - [x] Provide detailed reference information with context
 - [ ] Create virtual method table extraction capabilities
 
 ### Emulation Features
