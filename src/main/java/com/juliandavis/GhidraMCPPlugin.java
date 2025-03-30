@@ -230,6 +230,27 @@ public class GhidraMCPPlugin extends Plugin {
             sendJsonResponse(exchange, searchMemoryPattern(patternHex, searchExecutable, searchReadable, caseSensitive, maxResults));
         });
         
+        // String extraction endpoint
+        server.createContext("/memory/extractStrings", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            int minLength = Integer.parseInt(params.getOrDefault("minLength", "4"));
+            String encodingStr = params.getOrDefault("encoding", "ALL");
+            boolean searchRWMemory = Boolean.parseBoolean(params.getOrDefault("searchRWMemory", "true"));
+            boolean searchROMemory = Boolean.parseBoolean(params.getOrDefault("searchROMemory", "true"));
+            boolean searchExecutableMemory = Boolean.parseBoolean(params.getOrDefault("searchExecutableMemory", "false"));
+            int maxResults = Integer.parseInt(params.getOrDefault("maxResults", "1000"));
+            
+            StringExtractionService.StringEncoding encoding = StringExtractionService.StringEncoding.ALL;
+            try {
+                encoding = StringExtractionService.StringEncoding.valueOf(encodingStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                // Default to ALL if invalid encoding specified
+            }
+            
+            sendJsonResponse(exchange, extractStringsFromMemory(minLength, encoding, searchRWMemory, searchROMemory, 
+                searchExecutableMemory, maxResults));
+        });
+        
         // Memory cross-reference finder endpoint (scan memory for potential references)
         server.createContext("/memory/findPotentialReferences", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
@@ -1290,6 +1311,84 @@ public class GhidraMCPPlugin extends Plugin {
         } catch (Exception e) {
             Msg.error(this, "Error searching memory pattern", e);
             return createErrorResponse("Error searching memory pattern: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Extract strings from memory with configurable parameters
+     * 
+     * @param minLength Minimum string length to consider
+     * @param encoding String encoding to search for (ASCII, UNICODE, or ALL)
+     * @param searchRWMemory Whether to search in read-write memory
+     * @param searchROMemory Whether to search in read-only memory
+     * @param searchExecutableMemory Whether to search in executable memory
+     * @param maxResults Maximum number of results to return
+     * @return Map containing the string extraction results
+     */
+    private Map<String, Object> extractStringsFromMemory(
+            int minLength,
+            StringExtractionService.StringEncoding encoding,
+            boolean searchRWMemory,
+            boolean searchROMemory,
+            boolean searchExecutableMemory,
+            int maxResults) {
+        
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (minLength < 1) {
+            return createErrorResponse("Minimum length must be at least 1");
+        }
+        
+        if (!searchRWMemory && !searchROMemory && !searchExecutableMemory) {
+            return createErrorResponse("At least one memory type must be selected for searching");
+        }
+        
+        try {
+            // Get the extraction results
+            List<Map<String, Object>> results = StringExtractionService.extractStrings(
+                    program, 
+                    minLength, 
+                    encoding, 
+                    searchRWMemory, 
+                    searchROMemory, 
+                    searchExecutableMemory, 
+                    maxResults, 
+                    TaskMonitor.DUMMY);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("strings", results);
+            response.put("count", results.size());
+            
+            // Group by encoding
+            Map<String, Integer> encodingCounts = new HashMap<>();
+            for (Map<String, Object> result : results) {
+                String stringEncoding = (String) result.get("encoding");
+                encodingCounts.put(stringEncoding, encodingCounts.getOrDefault(stringEncoding, 0) + 1);
+            }
+            response.put("encodingCounts", encodingCounts);
+            
+            if (maxResults > 0 && results.size() >= maxResults) {
+                response.put("limitReached", true);
+                response.put("message", "Maximum result limit reached. Use maxResults parameter to adjust.");
+            }
+            
+            response.put("searchCriteria", Map.of(
+                "minLength", minLength,
+                "encoding", encoding.name(),
+                "searchRWMemory", searchRWMemory,
+                "searchROMemory", searchROMemory,
+                "searchExecutableMemory", searchExecutableMemory,
+                "maxResults", maxResults
+            ));
+            
+            return response;
+        } catch (Exception e) {
+            Msg.error(this, "Error extracting strings from memory", e);
+            return createErrorResponse("Error extracting strings: " + e.getMessage());
         }
     }
     

@@ -18,7 +18,11 @@ This checklist outlines the planned enhancements to the Ghidra Model Context Pro
 - [ ] Implement structure analysis capabilities
 - [ ] Support for binary patching operations
 - [ ] Add support for script execution
-- [ ] Implement binary search capabilities
+- [x] Implement binary search capabilities
+- [x] Add memory pattern search functionality
+- [ ] Implement address range decompilation
+- [ ] Add function identification at arbitrary addresses
+- [x] Add string extraction functionality
 - [ ] Add type analysis and propagation
 - [ ] Support for automated variable renaming suggestions
 - [x] Implement memory pattern search functionality
@@ -42,6 +46,9 @@ This checklist outlines the planned enhancements to the Ghidra Model Context Pro
 - [x] Implement memory tracking (read/write)
 - [x] Add stack tracking capability with stack growth direction support
 - [x] Support memory importing back to Ghidra program
+- [ ] Implement stdout/stderr capture for emulated program
+- [ ] Add stdin input capability for emulated program
+- [ ] Implement register history tracking
 - [ ] Support for multi-threaded program emulation
 - [ ] Implement system call emulation framework
 - [ ] Add external function stubbing/mocking
