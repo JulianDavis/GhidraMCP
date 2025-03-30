@@ -14,7 +14,7 @@ This checklist outlines the planned enhancements to the Ghidra Model Context Pro
 - [x] Add disassembly view endpoint
 - [x] Implement comments functionality
 - [ ] Implement bookmarks functionality
-- [ ] Implement data type creation and modification
+- [x] Implement data type creation and modification
 - [ ] Implement structure analysis capabilities
 - [ ] Support for binary patching operations
 - [ ] Add support for script execution

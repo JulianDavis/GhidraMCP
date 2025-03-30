@@ -19,6 +19,8 @@ import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.ConsoleTaskMonitor;
+import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.Structure;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -260,6 +262,142 @@ public class GhidraMCPPlugin extends Plugin {
             
             sendJsonResponse(exchange, getAllMemoryReferences(
                 targetAddress, includeMemoryScan, searchExecutable, searchReadable, maxResults));
+        });
+
+        // Data Type endpoints
+        server.createContext("/dataTypes/search", exchange -> {
+            Map<String, String> qparams = parseQueryParams(exchange);
+            String searchPattern = qparams.get("query");
+            String categoryPath = qparams.get("category");
+            int offset = parseIntOrDefault(qparams.get("offset"), 0);
+            int limit = parseIntOrDefault(qparams.get("limit"), 100);
+            
+            sendJsonResponse(exchange, DataTypeService.searchDataTypes(getCurrentProgram(), searchPattern, categoryPath, offset, limit));
+        });
+        
+        server.createContext("/dataTypes/category", exchange -> {
+            Map<String, String> qparams = parseQueryParams(exchange);
+            String categoryPath = qparams.get("path");
+            
+            sendJsonResponse(exchange, DataTypeService.getDataTypeCategory(getCurrentProgram(), categoryPath));
+        });
+        
+        server.createContext("/dataTypes/createPrimitive", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String dataTypeName = params.get("dataType");
+            String address = params.get("address");
+            
+            sendJsonResponse(exchange, DataTypeService.createPrimitiveDataType(getCurrentProgram(), dataTypeName, address));
+        });
+        
+        server.createContext("/dataTypes/createString", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String stringType = params.get("stringType");
+            String address = params.get("address");
+            int length = parseIntOrDefault(params.get("length"), -1);
+            
+            sendJsonResponse(exchange, DataTypeService.createStringDataType(getCurrentProgram(), stringType, address, length));
+        });
+        
+        server.createContext("/dataTypes/createArray", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String elementType = params.get("elementType");
+            String address = params.get("address");
+            int numElements = parseIntOrDefault(params.get("numElements"), 1);
+            
+            sendJsonResponse(exchange, DataTypeService.createArrayDataType(getCurrentProgram(), elementType, address, numElements));
+        });
+        
+        server.createContext("/dataTypes/createStructure", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String name = params.get("name");
+            String description = params.get("description");
+            boolean packed = Boolean.parseBoolean(params.getOrDefault("packed", "false"));
+            int alignment = parseIntOrDefault(params.get("alignment"), 0);
+            
+            sendJsonResponse(exchange, DataTypeService.createStructureDataType(getCurrentProgram(), name, description, packed, alignment));
+        });
+        
+        server.createContext("/dataTypes/addFieldToStructure", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String structureName = params.get("structureName");
+            String fieldName = params.get("fieldName");
+            String fieldType = params.get("fieldType");
+            String comment = params.get("comment");
+            
+            // Get offset parameter if provided, otherwise -1 indicates "append to end"
+            int offset = -1;
+            if (params.containsKey("offset")) {
+                try {
+                    offset = Integer.parseInt(params.get("offset"));
+                } catch (NumberFormatException e) {
+                    Msg.warn(this, "Invalid offset value: " + params.get("offset"));
+                }
+            }
+            
+            if (offset >= 0) {
+                // Use specified offset
+                sendJsonResponse(exchange, DataTypeService.addFieldToStructure(getCurrentProgram(), structureName, fieldName, fieldType, comment, offset));
+            } else {
+                // Find the structure first to calculate its length (append to end)
+                DataType structureType = DataTypeService.findDataType(getCurrentProgram(), structureName);
+                if (structureType instanceof Structure) {
+                    Structure structure = (Structure) structureType;
+                    int appendOffset = structure.getLength();
+                    sendJsonResponse(exchange, DataTypeService.addFieldToStructure(getCurrentProgram(), structureName, fieldName, fieldType, comment, appendOffset));
+                } else {
+                    // Structure not found or not a structure - pass offset 0 and let error handling in service handle it
+                    sendJsonResponse(exchange, DataTypeService.addFieldToStructure(getCurrentProgram(), structureName, fieldName, fieldType, comment, 0));
+                }
+            }
+        });
+        
+        server.createContext("/dataTypes/applyStructure", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String structureName = params.get("structureName");
+            String address = params.get("address");
+            
+            sendJsonResponse(exchange, DataTypeService.applyStructureToMemory(getCurrentProgram(), structureName, address));
+        });
+        
+        server.createContext("/dataTypes/createEnum", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String name = params.get("name");
+            int valueSize = parseIntOrDefault(params.get("valueSize"), 4);
+            String description = params.get("description");
+            
+            // Parse values map from comma-separated name:value pairs
+            Map<String, Long> values = new HashMap<>();
+            String valuesStr = params.get("values");
+            if (valuesStr != null && !valuesStr.isEmpty()) {
+                for (String pair : valuesStr.split(",")) {
+                    String[] parts = pair.split(":");
+                    if (parts.length == 2) {
+                        try {
+                            values.put(parts[0].trim(), Long.parseLong(parts[1].trim()));
+                        } catch (NumberFormatException e) {
+                            Msg.warn(this, "Invalid enum value: " + pair);
+                        }
+                    }
+                }
+            }
+            
+            sendJsonResponse(exchange, DataTypeService.createEnumDataType(getCurrentProgram(), name, valueSize, values, description));
+        });
+        
+        server.createContext("/dataTypes/applyEnum", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String enumName = params.get("enumName");
+            String address = params.get("address");
+            
+            sendJsonResponse(exchange, DataTypeService.applyEnumToMemory(getCurrentProgram(), enumName, address));
+        });
+        
+        server.createContext("/dataTypes/delete", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String name = params.get("name");
+            
+            sendJsonResponse(exchange, DataTypeService.deleteDataType(getCurrentProgram(), name));
         });
         
         // Initialize and register emulator endpoints
