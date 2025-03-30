@@ -35,6 +35,9 @@ REQUIRED_JARS=(
   "Decompiler.jar"
   "Utility.jar"
   "Base.jar"
+  "DB.jar"
+  "Gui.jar"
+  "Help.jar"
 )
 
 echo "Searching for Ghidra JAR files in $GHIDRA_PATH..."

@@ -3,10 +3,13 @@ package com.juliandavis;
 import ghidra.framework.plugintool.Plugin;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressIterator;
 import ghidra.program.model.address.GlobalNamespace;
 import ghidra.program.model.listing.*;
+import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.*;
+import ghidra.program.model.symbol.SourceType;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.plugin.PluginCategoryNames;
@@ -148,6 +151,37 @@ public class GhidraMCPPlugin extends Plugin {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             sendJsonResponse(exchange, searchFunctionsByName(searchTerm, offset, limit));
+        });
+        
+        server.createContext("/programInfo", exchange -> {
+            sendJsonResponse(exchange, getProgramMetadata());
+        });
+        
+        server.createContext("/xrefs", exchange -> {
+            Map<String, String> qparams = parseQueryParams(exchange);
+            String address = qparams.get("address");
+            sendJsonResponse(exchange, getReferencesAtAddress(address));
+        });
+        
+        server.createContext("/disassemble", exchange -> {
+            Map<String, String> qparams = parseQueryParams(exchange);
+            String address = qparams.get("address");
+            int length = parseIntOrDefault(qparams.get("length"), 10);  // Default to 10 instructions
+            sendJsonResponse(exchange, getDisassemblyAtAddress(address, length));
+        });
+        
+        server.createContext("/disassembleFunction", exchange -> {
+            String name = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            sendJsonResponse(exchange, getDisassemblyForFunction(name));
+        });
+        
+        server.createContext("/setComment", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String address = params.get("address");
+            String comment = params.get("comment");
+            int commentType = parseIntOrDefault(params.get("type"), CodeUnit.EOL_COMMENT); // Default to end-of-line comment
+            
+            sendJsonResponse(exchange, setCommentAtAddress(address, comment, commentType));
         });
 
         server.setExecutor(null);
@@ -483,7 +517,550 @@ public class GhidraMCPPlugin extends Plugin {
         
         // Create paginated response
         return createPaginatedResponse(functions, matchingFunctions.size(), offset, limit);
-    }    
+    }
+    
+    /**
+     * Get disassembly listing for a specific function by name
+     */
+    private Map<String, Object> getDisassemblyForFunction(String name) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (name == null || name.isEmpty()) {
+            return createErrorResponse("Function name is required");
+        }
+        
+        try {
+            // Find the function by name
+            Function function = null;
+            for (Function func : program.getFunctionManager().getFunctions(true)) {
+                if (func.getName().equals(name)) {
+                    function = func;
+                    break;
+                }
+            }
+            
+            if (function == null) {
+                return createErrorResponse("Function not found: " + name);
+            }
+            
+            // Get function boundaries
+            Address start = function.getEntryPoint();
+            Address end = function.getBody().getMaxAddress();
+            
+            // Use the address range to get disassembly
+            return getDisassemblyInRange(start, end, function);
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error getting disassembly for function " + name, e);
+            return createErrorResponse("Error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get disassembly at a specific address for a given number of instructions
+     */
+    private Map<String, Object> getDisassemblyAtAddress(String addressStr, int instructionCount) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (addressStr == null || addressStr.isEmpty()) {
+            return createErrorResponse("Address is required");
+        }
+        
+        if (instructionCount <= 0) {
+            return createErrorResponse("Instruction count must be positive");
+        }
+        
+        try {
+            Address address = program.getAddressFactory().getAddress(addressStr);
+            
+            // Determine the containing function (if any)
+            Function function = program.getFunctionManager().getFunctionContaining(address);
+            
+            // Get all instructions starting from the given address
+            List<Map<String, Object>> instructions = new ArrayList<>();
+            Listing listing = program.getListing();
+            int count = 0;
+            
+            Address currentAddress = address;
+            while (count < instructionCount) {
+                if (currentAddress == null || !program.getMemory().contains(currentAddress)) {
+                    break;
+                }
+                
+                Instruction instr = listing.getInstructionAt(currentAddress);
+                if (instr == null) {
+                    break;
+                }
+                
+                Map<String, Object> instrData = createInstructionData(instr, function);
+                instructions.add(instrData);
+                
+                try {
+                    currentAddress = instr.getAddress().add(instr.getLength());
+                } catch (Exception e) {
+                    break;
+                }
+                count++;
+            }
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("address", address.toString());
+            result.put("instructions", instructions);
+            result.put("count", instructions.size());
+            if (function != null) {
+                result.put("function", function.getName());
+            }
+            result.put("success", true);
+            
+            return result;
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error getting disassembly for address " + addressStr, e);
+            return createErrorResponse("Invalid address or error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get disassembly for an address range (internal method)
+     */
+    private Map<String, Object> getDisassemblyInRange(Address start, Address end, Function function) throws MemoryAccessException {
+        Program program = getCurrentProgram();
+        Listing listing = program.getListing();
+        
+        List<Map<String, Object>> instructions = new ArrayList<>();
+        
+        Address currentAddress = start;
+        while (currentAddress != null && currentAddress.compareTo(end) <= 0) {
+            if (!program.getMemory().contains(currentAddress)) {
+                // Skip to next address
+                currentAddress = currentAddress.add(1);
+                continue;
+            }
+            
+            Instruction instr = listing.getInstructionAt(currentAddress);
+            if (instr == null) {
+                currentAddress = currentAddress.add(1);
+                continue;
+            }
+            
+            Map<String, Object> instrData = createInstructionData(instr, function);
+            instructions.add(instrData);
+            
+            // Go to the next instruction
+            try {
+                currentAddress = instr.getAddress().add(instr.getLength());
+            } catch (Exception e) {
+                currentAddress = currentAddress.add(1);
+            }
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("start", start.toString());
+        result.put("end", end.toString());
+        result.put("instructions", instructions);
+        result.put("count", instructions.size());
+        if (function != null) {
+            result.put("function", function.getName());
+            result.put("signature", function.getSignature().toString());
+        }
+        result.put("success", true);
+        
+        return result;
+    }
+    
+    /**
+     * Create a map of instruction data (internal helper)
+     */
+    private Map<String, Object> createInstructionData(Instruction instr, Function function) throws MemoryAccessException {
+        Map<String, Object> instrData = new HashMap<>();
+        instrData.put("address", instr.getAddress().toString());
+        instrData.put("bytes", bytesToHexString(instr.getParsedBytes()));
+        instrData.put("mnemonic", instr.getMnemonicString());
+        
+        // Get the full representation with operands
+        String representation = instr.toString();
+        instrData.put("representation", representation);
+        
+        // Extract operands info
+        List<Map<String, Object>> operands = new ArrayList<>();
+        for (int i = 0; i < instr.getNumOperands(); i++) {
+            Map<String, Object> operandData = new HashMap<>();
+            operandData.put("index", i);
+            operandData.put("text", instr.getDefaultOperandRepresentation(i));
+            operandData.put("type", instr.getOperandType(i));
+            
+            // For references, include the target information
+            int opType = instr.getOperandType(i);
+            boolean hasReference = false;
+            
+            // Check if this operand has any references
+            Reference[] refs = instr.getOperandReferences(i);
+            if (refs != null && refs.length > 0) {
+                hasReference = true;
+                
+                List<Map<String, Object>> refList = new ArrayList<>();
+                
+                for (Reference ref : refs) {
+                    Map<String, Object> refData = new HashMap<>();
+                    refData.put("toAddress", ref.getToAddress().toString());
+                    refData.put("type", ref.getReferenceType().toString());
+                    
+                    // Add target information if it's a function
+                    Function targetFunc = getCurrentProgram().getFunctionManager().getFunctionAt(ref.getToAddress());
+                    if (targetFunc != null) {
+                        refData.put("toFunction", targetFunc.getName());
+                    }
+                    
+                    refList.add(refData);
+                }
+                
+                operandData.put("references", refList);
+            }
+            
+            operands.add(operandData);
+        }
+        instrData.put("operands", operands);
+        
+        // Add any comments
+        String comment = getCurrentProgram().getListing().getComment(
+                CodeUnit.PLATE_COMMENT, instr.getAddress());
+        if (comment != null && !comment.isEmpty()) {
+            instrData.put("plateComment", comment);
+        }
+        
+        comment = getCurrentProgram().getListing().getComment(
+                CodeUnit.PRE_COMMENT, instr.getAddress());
+        if (comment != null && !comment.isEmpty()) {
+            instrData.put("preComment", comment);
+        }
+        
+        comment = getCurrentProgram().getListing().getComment(
+                CodeUnit.EOL_COMMENT, instr.getAddress());
+        if (comment != null && !comment.isEmpty()) {
+            instrData.put("eolComment", comment);
+        }
+        
+        comment = getCurrentProgram().getListing().getComment(
+                CodeUnit.POST_COMMENT, instr.getAddress());
+        if (comment != null && !comment.isEmpty()) {
+            instrData.put("postComment", comment);
+        }
+        
+        // If this instruction is the entry point of a function, mark it
+        Function funcAtAddr = getCurrentProgram().getFunctionManager().getFunctionAt(instr.getAddress());
+        if (funcAtAddr != null) {
+            instrData.put("isEntryPoint", true);
+            instrData.put("functionName", funcAtAddr.getName());
+        }
+        
+        // Determine relative position in the containing function
+        if (function != null) {
+            long offset = instr.getAddress().subtract(function.getEntryPoint());
+            instrData.put("functionOffset", offset);
+        }
+        
+        return instrData;
+    }
+    
+    /**
+     * Convert byte array to hex string (internal helper)
+     */
+    private String bytesToHexString(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+    
+    /**
+     * Set a comment at the specified address
+     */
+    private Map<String, Object> setCommentAtAddress(String addressStr, String comment, int commentType) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (addressStr == null || addressStr.isEmpty()) {
+            return createErrorResponse("Address is required");
+        }
+        
+        // Validate comment type
+        if (commentType != CodeUnit.PLATE_COMMENT && 
+            commentType != CodeUnit.PRE_COMMENT && 
+            commentType != CodeUnit.EOL_COMMENT && 
+            commentType != CodeUnit.POST_COMMENT && 
+            commentType != CodeUnit.REPEATABLE_COMMENT) {
+            
+            return createErrorResponse("Invalid comment type: " + commentType);
+        }
+        
+        AtomicBoolean successFlag = new AtomicBoolean(false);
+        
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                int tx = program.startTransaction("Set comment");
+                try {
+                    Address address = program.getAddressFactory().getAddress(addressStr);
+                    
+                    // Get the code unit at this address (could be an instruction or data)
+                    CodeUnit codeUnit = program.getListing().getCodeUnitAt(address);
+                    if (codeUnit != null) {
+                        codeUnit.setComment(commentType, comment);
+                        successFlag.set(true);
+                    } else {
+                        Msg.warn(this, "No code unit found at address: " + addressStr);
+                    }
+                }
+                catch (Exception e) {
+                    Msg.error(this, "Error setting comment at address " + addressStr, e);
+                }
+                finally {
+                    program.endTransaction(tx, true);
+                }
+            });
+        }
+        catch (InterruptedException | InvocationTargetException e) {
+            Msg.error(this, "Failed to execute set comment on Swing thread", e);
+            return createErrorResponse("Error: " + e.getMessage());
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", successFlag.get());
+        result.put("address", addressStr);
+        result.put("commentType", commentType);
+        
+        // If we know comment type names, include them
+        String commentTypeName;
+        switch (commentType) {
+            case CodeUnit.PLATE_COMMENT:
+                commentTypeName = "PLATE";
+                break;
+            case CodeUnit.PRE_COMMENT:
+                commentTypeName = "PRE";
+                break;
+            case CodeUnit.EOL_COMMENT:
+                commentTypeName = "EOL";
+                break;
+            case CodeUnit.POST_COMMENT:
+                commentTypeName = "POST";
+                break;
+            case CodeUnit.REPEATABLE_COMMENT:
+                commentTypeName = "REPEATABLE";
+                break;
+            default:
+                commentTypeName = "UNKNOWN";
+        }
+        result.put("commentTypeName", commentTypeName);
+        
+        if (!successFlag.get()) {
+            result.put("message", "Failed to set comment - no code unit at address");
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Get all references to and from the specified address
+     */
+    private Map<String, Object> getReferencesAtAddress(String addressStr) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (addressStr == null || addressStr.isEmpty()) {
+            return createErrorResponse("Address is required");
+        }
+        
+        try {
+            Address address = program.getAddressFactory().getAddress(addressStr);
+            
+            // Get all references to this address (where this is the target)
+            List<Map<String, Object>> referencesToHere = new ArrayList<>();
+            ReferenceIterator refsToIter = program.getReferenceManager().getReferencesTo(address);
+            while (refsToIter.hasNext()) {
+                Reference ref = refsToIter.next();
+                Map<String, Object> reference = new HashMap<>();
+                reference.put("fromAddress", ref.getFromAddress().toString());
+                reference.put("toAddress", ref.getToAddress().toString());
+                reference.put("type", ref.getReferenceType().toString());
+                reference.put("isData", !ref.isMemoryReference());
+                reference.put("isPrimary", ref.isPrimary());
+                
+                // Add source context if it's a function
+                Function fromFunc = program.getFunctionManager().getFunctionAt(ref.getFromAddress());
+                if (fromFunc != null) {
+                    reference.put("fromFunction", fromFunc.getName());
+                    reference.put("fromFunctionOffset", 
+                            ref.getFromAddress().subtract(fromFunc.getEntryPoint()));
+                }
+                
+                referencesToHere.add(reference);
+            }
+            
+            // Get all references from this address (where this is the source)
+            List<Map<String, Object>> referencesFromHere = new ArrayList<>();
+            Reference[] refsFrom = program.getReferenceManager().getReferencesFrom(address);
+            for (Reference ref : refsFrom) {
+                Map<String, Object> reference = new HashMap<>();
+                reference.put("fromAddress", ref.getFromAddress().toString());
+                reference.put("toAddress", ref.getToAddress().toString());
+                reference.put("type", ref.getReferenceType().toString());
+                reference.put("isData", !ref.isMemoryReference());
+                reference.put("isPrimary", ref.isPrimary());
+                
+                // Add target context if it's a function
+                Function toFunc = program.getFunctionManager().getFunctionAt(ref.getToAddress());
+                if (toFunc != null) {
+                    reference.put("toFunction", toFunc.getName());
+                }
+                
+                referencesFromHere.add(reference);
+            }
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("address", address.toString());
+            result.put("referencesToHere", referencesToHere);
+            result.put("referencesFromHere", referencesFromHere);
+            result.put("success", true);
+            
+            return result;
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error getting references for address " + addressStr, e);
+            return createErrorResponse("Invalid address or error retrieving references: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get detailed metadata about the currently loaded program
+     */
+    private Map<String, Object> getProgramMetadata() {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        Map<String, Object> metadata = new HashMap<>();
+        
+        // Basic program information
+        metadata.put("name", program.getName());
+        metadata.put("location", program.getExecutablePath());
+        metadata.put("creationDate", program.getCreationDate().toString());
+        metadata.put("languageID", program.getLanguageID().toString());
+        metadata.put("compilerSpec", program.getCompilerSpec().getCompilerSpecID().toString());
+        metadata.put("imageBase", program.getImageBase().toString());
+        metadata.put("executableFormat", program.getExecutableFormat());
+        metadata.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
+        
+        // Memory statistics
+        Map<String, Object> memoryStats = new HashMap<>();
+        long totalBytes = 0;
+        for (MemoryBlock block : program.getMemory().getBlocks()) {
+            totalBytes += block.getSize();
+        }
+        memoryStats.put("totalSize", totalBytes);
+        memoryStats.put("blockCount", program.getMemory().getBlocks().length);
+        metadata.put("memory", memoryStats);
+        
+        // Function statistics
+        Map<String, Object> functionStats = new HashMap<>();
+        FunctionManager functionManager = program.getFunctionManager();
+        functionStats.put("totalCount", functionManager.getFunctionCount());
+        
+        // Count external functions
+        int externalCount = 0;
+        int internalCount = 0;
+        for (Function func : functionManager.getFunctions(true)) {
+            if (func.isExternal()) {
+                externalCount++;
+            } else {
+                internalCount++;
+            }
+        }
+        functionStats.put("externalCount", externalCount);
+        functionStats.put("internalCount", internalCount);
+        metadata.put("functions", functionStats);
+        
+        // Symbol statistics
+        Map<String, Object> symbolStats = new HashMap<>();
+        SymbolTable symbolTable = program.getSymbolTable();
+        symbolStats.put("totalCount", symbolTable.getNumSymbols());
+        
+        // Count external symbols
+        int externalSymbolCount = 0;
+        SymbolIterator extSymIt = symbolTable.getExternalSymbols();
+        while (extSymIt.hasNext()) {
+            extSymIt.next();
+            externalSymbolCount++;
+        }
+        symbolStats.put("externalCount", externalSymbolCount);
+        
+        // Count label symbols (approximate by checking primary symbols at all addresses)
+        int labelCount = 0;
+        AddressIterator addrIt = program.getMemory().getAddresses(true);
+        while (addrIt.hasNext()) {
+            Address addr = addrIt.next();
+            Symbol primarySymbol = symbolTable.getPrimarySymbol(addr);
+            if (primarySymbol != null && primarySymbol.getSymbolType() == SymbolType.LABEL) {
+                labelCount++;
+            }
+        }
+        symbolStats.put("labelCount", labelCount);
+        
+        // Count namespaces (approximate by namespace type)
+        int namespaceCount = 0;
+        SymbolIterator allSymIt = symbolTable.getAllSymbols(false);
+        while (allSymIt.hasNext()) {
+            Symbol sym = allSymIt.next();
+            if (sym.getSymbolType() == SymbolType.NAMESPACE) {
+                namespaceCount++;
+            }
+        }
+        symbolStats.put("namespaceCount", namespaceCount);
+        
+        metadata.put("symbols", symbolStats);
+        
+        // Data type statistics
+        Map<String, Object> dataTypeStats = new HashMap<>();
+        
+        // Count built-in and user-defined data types
+        int builtInCount = 0;
+        int userDefinedCount = 0;
+        Iterator<ghidra.program.model.data.DataType> dtIterator = program.getDataTypeManager().getAllDataTypes();
+        while (dtIterator.hasNext()) {
+            ghidra.program.model.data.DataType dt = dtIterator.next();
+            if (dt.getSourceArchive().getArchiveType() == ghidra.program.model.data.ArchiveType.BUILT_IN) {
+                builtInCount++;
+            } else {
+                userDefinedCount++;
+            }
+        }
+        
+        dataTypeStats.put("builtInCount", builtInCount);
+        dataTypeStats.put("userDefinedCount", userDefinedCount);
+        metadata.put("dataTypes", dataTypeStats);
+        
+        // Processor architecture info
+        Map<String, Object> processorInfo = new HashMap<>();
+        processorInfo.put("name", program.getLanguage().getProcessor().toString());
+        processorInfo.put("endian", program.getLanguage().isBigEndian() ? "big" : "little");
+        processorInfo.put("wordSize", program.getLanguage().getLanguageDescription().getSize());
+        metadata.put("processor", processorInfo);
+        
+        return Map.of(
+            "success", true,
+            "programInfo", metadata
+        );
+    }
 
     // ----------------------------------------------------------------------------------
     // Logic for rename, decompile, etc.
@@ -519,7 +1096,7 @@ public class GhidraMCPPlugin extends Plugin {
                 try {
                     for (Function func : program.getFunctionManager().getFunctions(true)) {
                         if (func.getName().equals(oldName)) {
-                            func.setName(newName, SourceType.USER_DEFINED);
+                            func.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
                             successFlag.set(true);
                             break;
                         }
