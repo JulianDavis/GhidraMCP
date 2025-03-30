@@ -88,6 +88,27 @@ public class GhidraMCPPlugin extends Plugin {
             response.put("decompiled", decompileFunctionByName(name));
             sendJsonResponse(exchange, response);
         });
+        
+        server.createContext("/decompileRange", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String startAddress = params.get("startAddress");
+            String endAddress = params.get("endAddress");
+            sendJsonResponse(exchange, decompileAddressRange(startAddress, endAddress));
+        });
+        
+        server.createContext("/identifyFunction", exchange -> {
+            Map<String, String> params = parseQueryParams(exchange);
+            String address = params.get("address");
+            sendJsonResponse(exchange, identifyFunctionAtAddress(address));
+        });
+        
+        server.createContext("/defineFunction", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String address = params.get("address");
+            String name = params.get("name"); // Optional function name
+            boolean force = Boolean.parseBoolean(params.getOrDefault("force", "false")); // Force creation flag
+            sendJsonResponse(exchange, defineFunctionAtAddress(address, name, force));
+        });
 
         server.createContext("/renameFunction", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
@@ -1969,6 +1990,376 @@ public class GhidraMCPPlugin extends Plugin {
             }
         }
         return "Function not found";
+    }
+    
+    /**
+     * Decompile code within a specified address range
+     * 
+     * @param startAddressStr The starting address as a string
+     * @param endAddressStr The ending address as a string
+     * @return Map containing the decompilation results
+     */
+    private Map<String, Object> decompileAddressRange(String startAddressStr, String endAddressStr) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (startAddressStr == null || startAddressStr.isEmpty()) {
+            return createErrorResponse("Start address is required");
+        }
+        
+        if (endAddressStr == null || endAddressStr.isEmpty()) {
+            return createErrorResponse("End address is required");
+        }
+        
+        try {
+            // Convert address strings to Address objects
+            Address startAddress = program.getAddressFactory().getAddress(startAddressStr);
+            Address endAddress = program.getAddressFactory().getAddress(endAddressStr);
+            
+            if (startAddress == null) {
+                return createErrorResponse("Invalid start address: " + startAddressStr);
+            }
+            
+            if (endAddress == null) {
+                return createErrorResponse("Invalid end address: " + endAddressStr);
+            }
+            
+            // Ensure start address is before end address
+            if (startAddress.compareTo(endAddress) > 0) {
+                return createErrorResponse("Start address must be less than or equal to end address");
+            }
+            
+            // Create the decompiler interface
+            DecompInterface decompInterface = new DecompInterface();
+            decompInterface.openProgram(program);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("startAddress", startAddress.toString());
+            result.put("endAddress", endAddress.toString());
+            
+            // Track functions successfully decompiled and those that failed
+            List<Map<String, Object>> decompiled = new ArrayList<>();
+            List<Map<String, Object>> failed = new ArrayList<>();
+            
+            // Find all functions that fall within the address range
+            FunctionManager functionManager = program.getFunctionManager();
+            for (Function function : functionManager.getFunctions(startAddress, true)) {
+                // Stop if we've passed the end address
+                if (function.getEntryPoint().compareTo(endAddress) > 0) {
+                    break;
+                }
+                
+                Map<String, Object> functionResult = new HashMap<>();
+                functionResult.put("name", function.getName());
+                functionResult.put("entryPoint", function.getEntryPoint().toString());
+                
+                // Decompile the function
+                DecompileResults decompileResults = decompInterface.decompileFunction(
+                    function, decompInterface.getOptions().getDefaultTimeout(), new ConsoleTaskMonitor());
+                
+                if (decompileResults != null && decompileResults.decompileCompleted()) {
+                    // Decompilation succeeded
+                    String code = decompileResults.getDecompiledFunction().getC();
+                    functionResult.put("code", code);
+                    decompiled.add(functionResult);
+                } else {
+                    // Decompilation failed
+                    String errorMessage = decompileResults != null ? 
+                        decompileResults.getErrorMessage() : "Unknown decompilation error";
+                    functionResult.put("error", errorMessage);
+                    failed.add(functionResult);
+                }
+            }
+            
+            // Check if any address in the range is not covered by a function
+            boolean hasUndefinedSpace = false;
+            Address current = startAddress;
+            while (current.compareTo(endAddress) <= 0) {
+                Function func = functionManager.getFunctionContaining(current);
+                if (func == null) {
+                    hasUndefinedSpace = true;
+                    break;
+                }
+                // Move to the end of the current function or the next code unit if no function
+                if (func != null) {
+                    Address funcEnd = func.getBody().getMaxAddress();
+                    current = funcEnd.add(1);
+                } else {
+                    // No function contains this address, move to next code unit
+                    CodeUnit cu = program.getListing().getCodeUnitAt(current);
+                    if (cu != null) {
+                        current = current.add(cu.getLength());
+                    } else {
+                        // If there's no code unit, move to the next address
+                        current = current.add(1);
+                    }
+                }
+            }
+            
+            // Complete the result
+            result.put("success", true);
+            result.put("decompiled", decompiled);
+            result.put("failed", failed);
+            result.put("totalFunctions", decompiled.size() + failed.size());
+            result.put("hasUndefinedSpace", hasUndefinedSpace);
+            
+            if (decompiled.isEmpty() && failed.isEmpty()) {
+                result.put("message", "No functions found in the specified address range");
+            }
+            
+            // Close the decompiler interface
+            decompInterface.dispose();
+            
+            return result;
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error decompiling address range", e);
+            return createErrorResponse("Error decompiling address range: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Identify if a function exists at the specified address and return information about it
+     * 
+     * @param addressStr The address to check as a string
+     * @return Map containing information about the function or status
+     */
+    private Map<String, Object> identifyFunctionAtAddress(String addressStr) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (addressStr == null || addressStr.isEmpty()) {
+            return createErrorResponse("Address is required");
+        }
+        
+        try {
+            Address address = program.getAddressFactory().getAddress(addressStr);
+            if (address == null) {
+                return createErrorResponse("Invalid address: " + addressStr);
+            }
+            
+            FunctionManager functionManager = program.getFunctionManager();
+            
+            // Check if a function exists at the specified address
+            Function functionAt = functionManager.getFunctionAt(address);
+            Function functionContaining = functionManager.getFunctionContaining(address);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("address", address.toString());
+            result.put("success", true);
+            
+            // Function exists at this exact address
+            if (functionAt != null) {
+                result.put("hasFunction", true);
+                result.put("functionType", "entry_point");
+                result.put("function", getFunctionDetails(functionAt));
+                result.put("message", "Function '" + functionAt.getName() + "' starts at " + address);
+                return result;
+            }
+            
+            // Address is within a function but not at the entry point
+            if (functionContaining != null) {
+                result.put("hasFunction", true);
+                result.put("functionType", "containing");
+                result.put("function", getFunctionDetails(functionContaining));
+                
+                // Calculate offset from function entry point
+                long offset = address.subtract(functionContaining.getEntryPoint());
+                result.put("offsetFromEntry", offset);
+                result.put("message", "Address is within function '" + functionContaining.getName() + 
+                    "' at offset " + offset + " bytes from entry point");
+                return result;
+            }
+            
+            // No function at or containing this address
+            result.put("hasFunction", false);
+            
+            // Check if this address might be a valid function start point
+            Instruction instr = program.getListing().getInstructionAt(address);
+            if (instr != null) {
+                result.put("hasInstruction", true);
+                result.put("instruction", instr.toString());
+                result.put("mnemonic", instr.getMnemonicString());
+                result.put("message", "No function at address, but instruction found: " + instr);
+                return result;
+            }
+            
+            // Check if there is data at this address
+            Data data = program.getListing().getDataAt(address);
+            if (data != null) {
+                result.put("hasData", true);
+                result.put("dataType", data.getDataType().getName());
+                result.put("dataValue", data.getDefaultValueRepresentation());
+                result.put("message", "No function at address, but data found: " + data.getDataType().getName());
+                return result;
+            }
+            
+            // Nothing defined at this address
+            result.put("message", "No function, instruction, or data defined at address " + address);
+            return result;
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error identifying function at address", e);
+            return createErrorResponse("Error identifying function: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Define a function at the specified address if one doesn't exist
+     * 
+     * @param addressStr The address to create the function at
+     * @param name Optional name for the new function (null for default naming)
+     * @param force Whether to force creation even if heuristics suggest it's not a valid function
+     * @return Map containing the result of the function creation attempt
+     */
+    private Map<String, Object> defineFunctionAtAddress(String addressStr, String name, boolean force) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (addressStr == null || addressStr.isEmpty()) {
+            return createErrorResponse("Address is required");
+        }
+        
+        AtomicBoolean successFlag = new AtomicBoolean(false);
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            Address address = program.getAddressFactory().getAddress(addressStr);
+            if (address == null) {
+                return createErrorResponse("Invalid address: " + addressStr);
+            }
+            
+            FunctionManager functionManager = program.getFunctionManager();
+            
+            // Check if a function already exists at this address
+            Function existingFunction = functionManager.getFunctionAt(address);
+            if (existingFunction != null) {
+                result.put("success", true);
+                result.put("address", address.toString());
+                result.put("functionCreated", false);
+                result.put("message", "Function already exists at " + address);
+                result.put("function", getFunctionDetails(existingFunction));
+                return result;
+            }
+            
+            // Check if this address is within an existing function
+            Function containingFunction = functionManager.getFunctionContaining(address);
+            if (containingFunction != null && !force) {
+                result.put("success", false);
+                result.put("address", address.toString());
+                result.put("functionCreated", false);
+                result.put("message", "Address " + address + " is within existing function '" + 
+                    containingFunction.getName() + "'. Use force=true to override.");
+                result.put("containingFunction", getFunctionDetails(containingFunction));
+                return result;
+            }
+            
+            // Check if there's an instruction at this address
+            Instruction instr = program.getListing().getInstructionAt(address);
+            if (instr == null && !force) {
+                result.put("success", false);
+                result.put("address", address.toString());
+                result.put("functionCreated", false);
+                result.put("message", "No instruction at " + address + 
+                    ". Cannot create function at non-instruction address. Use force=true to override.");
+                return result;
+            }
+            
+            // All checks passed or force=true, try to create the function
+            final Address finalAddress = address;
+            final String finalName = name;
+            
+            SwingUtilities.invokeAndWait(() -> {
+                int txId = program.startTransaction("Create function at " + finalAddress);
+                try {
+                    Function newFunction;
+                    if (finalName != null && !finalName.isEmpty()) {
+                        // Create with the specified name
+                        newFunction = functionManager.createFunction(
+                            finalName, finalAddress, null, SourceType.USER_DEFINED);
+                    } else {
+                        // Create with a default name
+                        newFunction = functionManager.createFunction(null, finalAddress, null, SourceType.DEFAULT);
+                    }
+                    
+                    if (newFunction != null) {
+                        successFlag.set(true);
+                        result.put("function", getFunctionDetails(newFunction));
+                    }
+                } catch (Exception e) {
+                    Msg.error(this, "Error creating function", e);
+                    result.put("error", e.getMessage());
+                } finally {
+                    program.endTransaction(txId, true);
+                }
+            });
+            
+            result.put("success", successFlag.get());
+            result.put("address", address.toString());
+            result.put("functionCreated", successFlag.get());
+            
+            if (successFlag.get()) {
+                result.put("message", "Function created successfully at " + address);
+            } else if (!result.containsKey("message")) {
+                result.put("message", "Failed to create function at " + address);
+            }
+            
+            return result;
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error creating function at address", e);
+            return createErrorResponse("Error creating function: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Helper method to extract detailed information about a function
+     * 
+     * @param function The function to get details for
+     * @return Map containing function details
+     */
+    private Map<String, Object> getFunctionDetails(Function function) {
+        if (function == null) {
+            return null;
+        }
+        
+        Map<String, Object> details = new HashMap<>();
+        details.put("name", function.getName());
+        details.put("entryPoint", function.getEntryPoint().toString());
+        details.put("body", Map.of(
+            "minAddress", function.getBody().getMinAddress().toString(),
+            "maxAddress", function.getBody().getMaxAddress().toString(),
+            "numAddresses", function.getBody().getNumAddresses()
+        ));
+        details.put("signature", function.getSignature().toString());
+        details.put("returnType", function.getReturnType().toString());
+        details.put("parameterCount", function.getParameterCount());
+        details.put("callFixup", function.getCallFixup() != null ? function.getCallFixup() : null);
+        details.put("callingConvention", function.getCallingConventionName());
+        details.put("isExternal", function.isExternal());
+        details.put("isThunk", function.isThunk());
+        
+        // Add parameter information if available
+        if (function.getParameterCount() > 0) {
+            List<Map<String, Object>> parameters = new ArrayList<>();
+            for (Parameter param : function.getParameters()) {
+                parameters.add(Map.of(
+                    "name", param.getName(),
+                    "dataType", param.getDataType().getName(),
+                    "length", param.getLength(),
+                    "ordinal", param.getOrdinal()
+                ));
+            }
+            details.put("parameters", parameters);
+        }
+        
+        return details;
     }
 
     private boolean renameFunction(String oldName, String newName) {

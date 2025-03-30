@@ -20,8 +20,8 @@ This checklist outlines the planned enhancements to the Ghidra Model Context Pro
 - [ ] Add support for script execution
 - [x] Implement binary search capabilities
 - [x] Add memory pattern search functionality
-- [ ] Implement address range decompilation
-- [ ] Add function identification at arbitrary addresses
+- [x] Implement address range decompilation
+- [x] Add function identification at arbitrary addresses
 - [x] Add string extraction functionality
 - [ ] Add type analysis and propagation
 - [ ] Support for automated variable renaming suggestions
