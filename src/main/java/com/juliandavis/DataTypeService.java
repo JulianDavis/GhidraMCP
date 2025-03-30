@@ -134,7 +134,7 @@ public class DataTypeService {
      * Create a new string data type at the specified address
      *
      * @param program The current program
-     * @param stringType Type of string to create ("string", "unicode", "pascal")
+     * @param stringType Type of string to create ("string", "Unicode", "pascal")
      * @param addressStr Address where to create the string data type
      * @param length Optional maximum length for the string (-1 for auto-detect)
      * @return Map containing the result of the operation
@@ -150,16 +150,38 @@ public class DataTypeService {
                 return createErrorResponse("Invalid address: " + addressStr);
             }
 
-            // Get the appropriate string data type
+            // Determine data type based on string type and length
             DataType dataType;
-            if ("string".equalsIgnoreCase(stringType) || "ascii".equalsIgnoreCase(stringType)) {
-                dataType = new StringDataType();
-            } else if ("unicode".equalsIgnoreCase(stringType)) {
-                dataType = new UnicodeDataType();
-            } else if ("pascal".equalsIgnoreCase(stringType)) {
-                dataType = new PascalStringDataType();
+            
+            if (length > 0) {
+                // Create a character array for fixed length strings
+                DataTypeManager dtm = program.getDataTypeManager();
+                DataType charType;
+                
+                if ("string".equalsIgnoreCase(stringType) || "ascii".equalsIgnoreCase(stringType)) {
+                    charType = dtm.getDataType("/char");
+                } else if ("unicode".equalsIgnoreCase(stringType)) {
+                    charType = dtm.getDataType("/wchar_t");
+                } else if ("pascal".equalsIgnoreCase(stringType)) {
+                    // Pascal strings can't easily be represented as fixed-length arrays
+                    return createErrorResponse("Fixed-length not supported for Pascal strings");
+                } else {
+                    return createErrorResponse("Unsupported string type: " + stringType);
+                }
+                
+                // Create array data type with the specified length
+                dataType = new ArrayDataType(charType, length, charType.getLength());
             } else {
-                return createErrorResponse("Unsupported string type: " + stringType);
+                // Use standard auto-terminated string types
+                if ("string".equalsIgnoreCase(stringType) || "ascii".equalsIgnoreCase(stringType)) {
+                    dataType = new StringDataType();
+                } else if ("unicode".equalsIgnoreCase(stringType)) {
+                    dataType = new UnicodeDataType();
+                } else if ("pascal".equalsIgnoreCase(stringType)) {
+                    dataType = new PascalStringDataType();
+                } else {
+                    return createErrorResponse("Unsupported string type: " + stringType);
+                }
             }
 
             // Create the data
@@ -176,6 +198,10 @@ public class DataTypeService {
             response.put("dataType", dataType.getName());
             response.put("size", data.getLength());
             response.put("value", data.getDefaultValueRepresentation());
+            
+            if (length > 0) {
+                response.put("fixedLength", length);
+            }
             
             return response;
         } catch (Exception e) {
@@ -572,7 +598,7 @@ public class DataTypeService {
             while (dtIterator.hasNext()) {
                 DataType dt = dtIterator.next();
                 
-                // Skip if doesn't match the category
+                // Skip if it doesn't match the category
                 if (categoryPathObj != null && !dt.getCategoryPath().isAncestorOrSelf(categoryPathObj)) {
                     continue;
                 }
