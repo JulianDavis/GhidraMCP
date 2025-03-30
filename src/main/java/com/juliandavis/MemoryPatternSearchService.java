@@ -15,7 +15,7 @@ import java.util.*;
 /**
  * Service for searching memory for byte patterns in Ghidra.
  * Uses Ghidra's native Memory.findBytes API for improved performance and flexibility.
- *
+ * <p>
  * This implementation supports:
  * - Efficient memory scanning using Ghidra's optimized APIs
  * - Wildcard bytes in patterns using ?? or ** notation
@@ -31,7 +31,7 @@ public class MemoryPatternSearchService {
      * @param patternHex The pattern to search for (as a hex string, can include wildcards with '??')
      * @param searchExecutable Whether to search only in executable memory
      * @param searchOnlyReadable Whether to search only in readable memory
-     * @param caseSensitive Whether the search is case sensitive (relevant for ASCII/string searches)
+     * @param caseSensitive Whether the search is case-sensitive (relevant for ASCII/string searches)
      * @param maxResults Maximum number of results to return (0 for unlimited)
      * @param monitor Task monitor for tracking progress (can be null)
      * @return List of addresses where the pattern was found
@@ -163,7 +163,7 @@ public class MemoryPatternSearchService {
      * Parse a hex pattern string into pattern and mask byte arrays.
      * 
      * @param patternHex The pattern in hex format
-     * @param caseSensitive Whether the search is case sensitive
+     * @param caseSensitive Whether the search is case-sensitive
      * @return Map containing "pattern" and "masks" byte arrays
      * @throws IllegalArgumentException If the pattern is invalid
      */
@@ -284,7 +284,7 @@ public class MemoryPatternSearchService {
      */
     private static int getAddressRangeCount(AddressSet addressSet) {
         int count = 0;
-        for (AddressRange range : addressSet) {
+        for (AddressRange ignored : addressSet) {
             count++;
         }
         return count;

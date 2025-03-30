@@ -1,12 +1,8 @@
 package com.juliandavis;
 
-import com.sun.net.httpserver.HttpExchange;
-import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
-import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;

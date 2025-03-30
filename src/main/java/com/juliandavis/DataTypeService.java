@@ -293,26 +293,30 @@ public class DataTypeService {
                     DataTypeConflictHandler.DEFAULT_HANDLER);
 
             // Create success response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("name", addedStructure.getName());
-            response.put("id", addedStructure.getUniversalID().getValue());
-            response.put("category", addedStructure.getCategoryPath().getPath());
-            response.put("size", addedStructure.getLength());
-            response.put("alignment", addedStructure.getAlignment());
-            response.put("packed", addedStructure.isPackingEnabled());
-            
-            if (addedStructure.getDescription() != null) {
-                response.put("description", addedStructure.getDescription());
-            }
-            
-            return response;
+
+            return getStringObjectMap(addedStructure);
         } catch (Exception e) {
             Msg.error(null, "Error creating structure data type", e);
             return createErrorResponse("Error creating structure: " + e.getMessage());
         }
     }
-    
+
+    private static Map<String, Object> getStringObjectMap(StructureDataType addedStructure) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("name", addedStructure.getName());
+        response.put("id", addedStructure.getUniversalID().getValue());
+        response.put("category", addedStructure.getCategoryPath().getPath());
+        response.put("size", addedStructure.getLength());
+        response.put("alignment", addedStructure.getAlignment());
+        response.put("packed", addedStructure.isPackingEnabled());
+
+        if (addedStructure.getDescription() != null) {
+            response.put("description", addedStructure.getDescription());
+        }
+        return response;
+    }
+
     /**
      * Add a field to an existing structure data type at the specified offset
      *
@@ -592,59 +596,7 @@ public class DataTypeService {
             // Convert to result format
             List<Map<String, Object>> results = new ArrayList<>();
             for (DataType dt : pagedDataTypes) {
-                Map<String, Object> dataTypeInfo = new HashMap<>();
-                dataTypeInfo.put("name", dt.getName());
-                dataTypeInfo.put("category", dt.getCategoryPath().getPath());
-                dataTypeInfo.put("size", dt.getLength());
-                dataTypeInfo.put("id", dt.getUniversalID().getValue());
-                dataTypeInfo.put("isBuiltIn", dt.getSourceArchive().getArchiveType() == ArchiveType.BUILT_IN);
-                
-                if (dt.getDescription() != null && !dt.getDescription().isEmpty()) {
-                    dataTypeInfo.put("description", dt.getDescription());
-                }
-                
-                // Add structure-specific information
-                if (dt instanceof Structure) {
-                    Structure struct = (Structure) dt;
-                    dataTypeInfo.put("isStructure", true);
-                    dataTypeInfo.put("alignment", struct.getAlignment());
-                    dataTypeInfo.put("packed", struct.isPackingEnabled());
-                    dataTypeInfo.put("componentCount", struct.getNumComponents());
-                    
-                    // Include field information for small structures
-                    if (struct.getNumComponents() <= 20) {
-                        List<Map<String, Object>> fields = new ArrayList<>();
-                        for (int i = 0; i < struct.getNumComponents(); i++) {
-                            DataTypeComponent component = struct.getComponent(i);
-                            Map<String, Object> field = new HashMap<>();
-                            field.put("name", component.getFieldName());
-                            field.put("offset", component.getOffset());
-                            field.put("dataType", component.getDataType().getName());
-                            field.put("length", component.getLength());
-                            
-                            if (component.getComment() != null) {
-                                field.put("comment", component.getComment());
-                            }
-                            
-                            fields.add(field);
-                        }
-                        dataTypeInfo.put("fields", fields);
-                    }
-                }
-                
-                // Add enum-specific information
-                Enum enumType = (Enum) dt;
-                dataTypeInfo.put("isEnum", true);
-                dataTypeInfo.put("valueCount", enumType.getCount());
-
-                // Include enum values for small enums
-                if (enumType.getCount() <= 20) {
-                    Map<String, Long> values = new HashMap<>();
-                    for (String name : enumType.getNames()) {
-                        values.put(name, enumType.getValue(name));
-                    }
-                    dataTypeInfo.put("values", values);
-                }
+                Map<String, Object> dataTypeInfo = getObjectMap(dt);
 
                 results.add(dataTypeInfo);
             }
@@ -671,7 +623,64 @@ public class DataTypeService {
             return createErrorResponse("Error searching data types: " + e.getMessage());
         }
     }
-    
+
+    private static Map<String, Object> getObjectMap(DataType dt) {
+        Map<String, Object> dataTypeInfo = new HashMap<>();
+        dataTypeInfo.put("name", dt.getName());
+        dataTypeInfo.put("category", dt.getCategoryPath().getPath());
+        dataTypeInfo.put("size", dt.getLength());
+        dataTypeInfo.put("id", dt.getUniversalID().getValue());
+        dataTypeInfo.put("isBuiltIn", dt.getSourceArchive().getArchiveType() == ArchiveType.BUILT_IN);
+
+        if (dt.getDescription() != null && !dt.getDescription().isEmpty()) {
+            dataTypeInfo.put("description", dt.getDescription());
+        }
+
+        // Add structure-specific information
+        if (dt instanceof Structure) {
+            Structure struct = (Structure) dt;
+            dataTypeInfo.put("isStructure", true);
+            dataTypeInfo.put("alignment", struct.getAlignment());
+            dataTypeInfo.put("packed", struct.isPackingEnabled());
+            dataTypeInfo.put("componentCount", struct.getNumComponents());
+            
+            // Include field information for small structures
+            if (struct.getNumComponents() <= 20) {
+                List<Map<String, Object>> fields = new ArrayList<>();
+                for (int i = 0; i < struct.getNumComponents(); i++) {
+                    DataTypeComponent component = struct.getComponent(i);
+                    Map<String, Object> field = new HashMap<>();
+                    field.put("name", component.getFieldName());
+                    field.put("offset", component.getOffset());
+                    field.put("dataType", component.getDataType().getName());
+                    field.put("length", component.getLength());
+                    
+                    if (component.getComment() != null) {
+                        field.put("comment", component.getComment());
+                    }
+                    
+                    fields.add(field);
+                }
+                dataTypeInfo.put("fields", fields);
+            }
+        }
+
+        // Add enum-specific information
+        Enum enumType = (Enum) dt;
+        dataTypeInfo.put("isEnum", true);
+        dataTypeInfo.put("valueCount", enumType.getCount());
+
+        // Include enum values for small enums
+        if (enumType.getCount() <= 20) {
+            Map<String, Long> values = new HashMap<>();
+            for (String name : enumType.getNames()) {
+                values.put(name, enumType.getValue(name));
+            }
+            dataTypeInfo.put("values", values);
+        }
+        return dataTypeInfo;
+    }
+
     /**
      * Create a new enumeration data type in the program's data type manager
      *
@@ -848,39 +857,13 @@ public class DataTypeService {
             }
             
             // Get subcategories
-            List<Map<String, Object>> subcategories = new ArrayList<>();
-            for (Category subcat : category.getCategories()) {
-                Map<String, Object> subcatInfo = new HashMap<>();
-                subcatInfo.put("name", subcat.getName());
-                subcatInfo.put("path", subcat.getCategoryPath().getPath());
-                subcatInfo.put("categoryCount", subcat.getCategories().length);
-                subcatInfo.put("dataTypeCount", subcat.getDataTypes().length);
-                subcategories.add(subcatInfo);
-            }
-            
+            List<Map<String, Object>> subcategories = getMaps(category);
+
             // Get data types in this category
             List<Map<String, Object>> dataTypes = new ArrayList<>();
             for (DataType dt : category.getDataTypes()) {
-                Map<String, Object> dataTypeInfo = new HashMap<>();
-                dataTypeInfo.put("name", dt.getName());
-                dataTypeInfo.put("size", dt.getLength());
-                dataTypeInfo.put("id", dt.getUniversalID().getValue());
-                dataTypeInfo.put("isBuiltIn", dt.getSourceArchive().getArchiveType() == ArchiveType.BUILT_IN);
-                
-                if (dt instanceof Structure) {
-                    dataTypeInfo.put("type", "Structure");
-                } else if (dt instanceof Union) {
-                    dataTypeInfo.put("type", "Union");
-                } else if (dt instanceof Enum) {
-                    dataTypeInfo.put("type", "Enum");
-                } else if (dt instanceof TypeDef) {
-                    dataTypeInfo.put("type", "TypeDef");
-                } else if (dt instanceof Array) {
-                    dataTypeInfo.put("type", "Array");
-                } else {
-                    dataTypeInfo.put("type", "Primitive");
-                }
-                
+                Map<String, Object> dataTypeInfo = getStringObjectMap(dt);
+
                 dataTypes.add(dataTypeInfo);
             }
             
@@ -899,5 +882,41 @@ public class DataTypeService {
             Msg.error(null, "Error getting data type category", e);
             return createErrorResponse("Error getting data type category: " + e.getMessage());
         }
+    }
+
+    private static List<Map<String, Object>> getMaps(Category category) {
+        List<Map<String, Object>> subcategories = new ArrayList<>();
+        for (Category subcat : category.getCategories()) {
+            Map<String, Object> subcatInfo = new HashMap<>();
+            subcatInfo.put("name", subcat.getName());
+            subcatInfo.put("path", subcat.getCategoryPath().getPath());
+            subcatInfo.put("categoryCount", subcat.getCategories().length);
+            subcatInfo.put("dataTypeCount", subcat.getDataTypes().length);
+            subcategories.add(subcatInfo);
+        }
+        return subcategories;
+    }
+
+    private static Map<String, Object> getStringObjectMap(DataType dt) {
+        Map<String, Object> dataTypeInfo = new HashMap<>();
+        dataTypeInfo.put("name", dt.getName());
+        dataTypeInfo.put("size", dt.getLength());
+        dataTypeInfo.put("id", dt.getUniversalID().getValue());
+        dataTypeInfo.put("isBuiltIn", dt.getSourceArchive().getArchiveType() == ArchiveType.BUILT_IN);
+
+        if (dt instanceof Structure) {
+            dataTypeInfo.put("type", "Structure");
+        } else if (dt instanceof Union) {
+            dataTypeInfo.put("type", "Union");
+        } else if (dt instanceof Enum) {
+            dataTypeInfo.put("type", "Enum");
+        } else if (dt instanceof TypeDef) {
+            dataTypeInfo.put("type", "TypeDef");
+        } else if (dt instanceof Array) {
+            dataTypeInfo.put("type", "Array");
+        } else {
+            dataTypeInfo.put("type", "Primitive");
+        }
+        return dataTypeInfo;
     }
 }

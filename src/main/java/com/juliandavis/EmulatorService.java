@@ -514,7 +514,7 @@ public class EmulatorService {
                 }
                 
                 // Check for stop address before stepping
-                if (stopAddress != null && currentPC.equals(stopAddress)) {
+                if (currentPC.equals(stopAddress)) {
                     reachedStopAddress = true;
                     break;
                 }
@@ -744,29 +744,7 @@ public class EmulatorService {
             SortedMap<Address, byte[]> contiguousWrites = groupContiguousWrites(session.getMemoryWrites());
             
             for (Map.Entry<Address, byte[]> entry : contiguousWrites.entrySet()) {
-                Address addr = entry.getKey();
-                byte[] bytes = entry.getValue();
-                
-                Map<String, Object> writeInfo = new HashMap<>();
-                writeInfo.put("address", addr.toString());
-                writeInfo.put("length", bytes.length);
-                
-                StringBuilder hexString = new StringBuilder();
-                StringBuilder asciiString = new StringBuilder();
-                
-                for (byte b : bytes) {
-                    hexString.append(String.format("%02x", b));
-                    
-                    // Add ASCII representation if printable
-                    if (b >= 32 && b < 127) {
-                        asciiString.append((char) b);
-                    } else {
-                        asciiString.append('.');
-                    }
-                }
-                
-                writeInfo.put("hexValue", hexString.toString());
-                writeInfo.put("asciiValue", asciiString.toString());
+                Map<String, Object> writeInfo = getStringObjectMap(entry);
                 writes.add(writeInfo);
             }
             
@@ -782,7 +760,34 @@ public class EmulatorService {
             return result;
         }
     }
-    
+
+    private static Map<String, Object> getStringObjectMap(Map.Entry<Address, byte[]> entry) {
+        Address addr = entry.getKey();
+        byte[] bytes = entry.getValue();
+
+        Map<String, Object> writeInfo = new HashMap<>();
+        writeInfo.put("address", addr.toString());
+        writeInfo.put("length", bytes.length);
+
+        StringBuilder hexString = new StringBuilder();
+        StringBuilder asciiString = new StringBuilder();
+
+        for (byte b : bytes) {
+            hexString.append(String.format("%02x", b));
+
+            // Add ASCII representation if printable
+            if (b >= 32 && b < 127) {
+                asciiString.append((char) b);
+            } else {
+                asciiString.append('.');
+            }
+        }
+
+        writeInfo.put("hexValue", hexString.toString());
+        writeInfo.put("asciiValue", asciiString.toString());
+        return writeInfo;
+    }
+
     /**
      * Writes memory bytes from emulator to Ghidra program.
      * 
@@ -1058,7 +1063,7 @@ public class EmulatorService {
                     for (byte b : bytes) {
                         hexValue.append(String.format("%02x", b));
                     }
-                    entry.put("value", "0x" + hexValue.toString());
+                    entry.put("value", "0x" + hexValue);
                     
                     stackValues.add(entry);
                 } catch (Exception e) {
@@ -1505,7 +1510,7 @@ public class EmulatorService {
             result.put("success", true);
             result.put("address", address.toString());
             result.put("condition", condition);
-            result.put("message", "Conditional breakpoint set at " + address.toString());
+            result.put("message", "Conditional breakpoint set at " + address);
             
             return result;
         } catch (Exception e) {
@@ -1647,29 +1652,7 @@ public class EmulatorService {
             SortedMap<Address, byte[]> contiguousReads = groupContiguousWrites(session.getMemoryReads());
             
             for (Map.Entry<Address, byte[]> entry : contiguousReads.entrySet()) {
-                Address addr = entry.getKey();
-                byte[] bytes = entry.getValue();
-                
-                Map<String, Object> readInfo = new HashMap<>();
-                readInfo.put("address", addr.toString());
-                readInfo.put("length", bytes.length);
-                
-                StringBuilder hexString = new StringBuilder();
-                StringBuilder asciiString = new StringBuilder();
-                
-                for (byte b : bytes) {
-                    hexString.append(String.format("%02x", b));
-                    
-                    // Add ASCII representation if printable
-                    if (b >= 32 && b < 127) {
-                        asciiString.append((char) b);
-                    } else {
-                        asciiString.append('.');
-                    }
-                }
-                
-                readInfo.put("hexValue", hexString.toString());
-                readInfo.put("asciiValue", asciiString.toString());
+                Map<String, Object> readInfo = getStringObjectMap(entry);
                 reads.add(readInfo);
             }
             

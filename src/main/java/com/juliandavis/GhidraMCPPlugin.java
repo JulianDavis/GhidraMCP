@@ -3,7 +3,6 @@ package com.juliandavis;
 import ghidra.framework.plugintool.Plugin;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressIterator;
 import ghidra.program.model.address.GlobalNamespace;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.mem.MemoryAccessException;
@@ -44,7 +43,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class GhidraMCPPlugin extends Plugin {
 
     private HttpServer server;
-    private EmulatorHttpHandler emulatorHandler;
 
     public GhidraMCPPlugin(PluginTool tool) {
         super(tool);
@@ -401,7 +399,7 @@ public class GhidraMCPPlugin extends Plugin {
         });
         
         // Initialize and register emulator endpoints
-        emulatorHandler = new EmulatorHttpHandler(this);
+        EmulatorHttpHandler emulatorHandler = new EmulatorHttpHandler(this);
         emulatorHandler.registerEndpoints();
         
         server.setExecutor(null);
@@ -1557,7 +1555,6 @@ public class GhidraMCPPlugin extends Plugin {
             return createErrorResponse("No program loaded");
         }
 
-        Map<String, Object> response = new HashMap<>();
         Map<String, Object> stats = new HashMap<>();
 
         // Always include total count (fast operation)
@@ -1623,6 +1620,7 @@ public class GhidraMCPPlugin extends Plugin {
         stats.put("processedCount", externalProcessed + internalProcessed + processedCount);
 
         // Build response
+        Map<String, Object> response = new HashMap<>();
         response.put("stats", stats);
         response.put("isComplete", isComplete);
         if (!isComplete) {
@@ -1748,7 +1746,7 @@ public class GhidraMCPPlugin extends Plugin {
         return Map.of(
             "success", true,
             "symbolStats", stats,
-            "items", items.size() > 0 ? items : Collections.emptyList(),
+            "items", !items.isEmpty() ? items : Collections.emptyList(),
             "processedCount", processed,
             "isComplete", isComplete,
             "continuationToken", isComplete ? "" : String.valueOf(currentPosition)
@@ -1961,7 +1959,7 @@ public class GhidraMCPPlugin extends Plugin {
                 if (kv.length == 2) {
                     // Properly URL-decode the parameter value
                     String key = kv[0];
-                    String value = null;
+                    String value;
                     try {
                         value = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
                     } catch (IllegalArgumentException e) {

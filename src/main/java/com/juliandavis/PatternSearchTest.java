@@ -1,16 +1,12 @@
 package com.juliandavis;
 
 import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
-import ghidra.util.task.TaskMonitor;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Test script for validating the memory pattern search implementation.

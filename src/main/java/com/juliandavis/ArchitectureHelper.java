@@ -140,14 +140,12 @@ public class ArchitectureHelper {
      */
     public int getStackGrowthDirection() {
         // Most architectures grow downward
-        switch (processorName) {
-            // Known upward-growing stack architectures
-            case "MicroBlaze":
-                return 1;
+        // Known upward-growing stack architectures
+        if (processorName.equals("MicroBlaze")) {
+            return 1;
             // All others grow downward
-            default:
-                return -1;
         }
+        return -1;
     }
     
     /**

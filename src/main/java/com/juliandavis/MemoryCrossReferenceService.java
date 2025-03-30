@@ -96,7 +96,7 @@ public class MemoryCrossReferenceService {
                                     } else {
                                         context.append("     ");
                                     }
-                                    context.append(cu.toString()).append("\n");
+                                    context.append(cu).append("\n");
                                 }
                             }
                         }
