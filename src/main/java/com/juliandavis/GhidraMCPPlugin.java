@@ -1226,7 +1226,7 @@ public class GhidraMCPPlugin extends Plugin {
      * @param patternHex The pattern to search for as a hex string
      * @param searchExecutable Whether to search only in executable memory
      * @param searchReadable Whether to search only in readable memory
-     * @param caseSensitive Whether the search is case sensitive
+     * @param caseSensitive Whether the search is case-sensitive
      * @param maxResults Maximum number of results to return
      * @return Map containing the search results
      */

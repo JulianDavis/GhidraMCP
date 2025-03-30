@@ -289,18 +289,4 @@ public class MemoryPatternSearchService {
         }
         return count;
     }
-    
-    /**
-     * Calculate the total size of an address set in bytes.
-     * 
-     * @param addressSet The address set
-     * @return Total size in bytes
-     */
-    private static long getAddressSetSize(AddressSet addressSet) {
-        long size = 0;
-        for (AddressRange range : addressSet) {
-            size += range.getLength();
-        }
-        return size;
-    }
 }

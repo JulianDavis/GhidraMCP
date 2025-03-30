@@ -35,11 +35,12 @@ This checklist outlines the planned enhancements to the Ghidra Model Context Pro
 - [x] Create EmulatorHttpHandler with REST endpoints
 - [x] Implement comprehensive session management with unique IDs
 - [x] Add architecture abstraction through ArchitectureHelper class
+- [x] Implement comprehensive architecture info endpoint
 - [x] Support step-by-step execution and run-until features
-- [x] Implement memory and register read/write operations
+- [x] Implement memory and register read/write operations with endianness awareness
 - [x] Add breakpoint management (normal and conditional)
 - [x] Implement memory tracking (read/write)
-- [x] Add stack tracking capability
+- [x] Add stack tracking capability with stack growth direction support
 - [x] Support memory importing back to Ghidra program
 - [ ] Support for multi-threaded program emulation
 - [ ] Implement system call emulation framework

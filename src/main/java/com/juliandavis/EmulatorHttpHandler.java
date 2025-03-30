@@ -33,6 +33,12 @@ public class EmulatorHttpHandler {
      * Registers emulator-related endpoints with the HTTP server
      */
     public void registerEndpoints() {
+        // Get architecture information
+        plugin.getServer().createContext("/emulator/getArchitectureInfo", exchange -> {
+            Map<String, Object> response = getArchitectureInfo();
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
         // Initialize emulator session
         plugin.getServer().createContext("/emulator/initialize", exchange -> {
             Map<String, String> params = plugin.parsePostParams(exchange);
@@ -695,6 +701,62 @@ public class EmulatorHttpHandler {
             ghidra.util.Msg.error(this, "Error getting register changes", e);
             return createErrorResponse("Error getting register changes: " + e.getMessage());
         }
+    }
+    
+    /**
+     * Dispose of the current emulator session
+     */
+    /**
+     * Get architecture-specific information for the current program.
+     * This information includes processor name, endianness, and stack growth direction.
+     * 
+     * @return Map containing architecture information
+     */
+    private Map<String, Object> getArchitectureInfo() {
+        Program program = plugin.getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Create a temporary EmulatorHelper to access architecture information
+            EmulatorHelper emulator = new EmulatorHelper(program);
+            ArchitectureHelper archHelper = new ArchitectureHelper(program, emulator);
+            
+            // Get architecture information
+            String processorName = archHelper.getProcessorName();
+            boolean isBigEndian = archHelper.isBigEndian();
+            int stackGrowthDirection = archHelper.getStackGrowthDirection();
+            int pointerSize = archHelper.getPointerSize();
+            String pcRegisterName = archHelper.getProgramCounterRegisterName();
+            String spRegisterName = archHelper.getStackPointerRegisterName();
+            
+            // Create the response
+            result.put("success", true);
+            result.put("processorName", processorName);
+            result.put("isBigEndian", isBigEndian);
+            result.put("stackGrowthDirection", stackGrowthDirection);
+            result.put("stackGrowthDirectionDesc", stackGrowthDirection > 0 ? "upward" : "downward");
+            result.put("pointerSize", pointerSize);
+            result.put("programCounterRegister", pcRegisterName);
+            result.put("stackPointerRegister", spRegisterName);
+            
+            // Add information about the language
+            result.put("languageName", program.getLanguage().getLanguageDescription().getDescription());
+            result.put("languageId", program.getLanguage().getLanguageID().getIdAsString());
+            result.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
+            
+            // Clean up resources
+            emulator.dispose();
+            
+        } catch (Exception e) {
+            ghidra.util.Msg.error(this, "Error getting architecture information", e);
+            return createErrorResponse("Error getting architecture information: " + e.getMessage());
+        }
+        
+        return result;
     }
     
     /**

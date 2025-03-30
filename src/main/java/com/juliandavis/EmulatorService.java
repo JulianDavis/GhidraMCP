@@ -738,6 +738,10 @@ public class EmulatorService {
         }
         
         try {
+            // Get architecture information
+            ArchitectureHelper archHelper = new ArchitectureHelper(session.getProgram(), session.getEmulator());
+            boolean isBigEndian = archHelper.isBigEndian();
+            
             List<Map<String, Object>> writes = new ArrayList<>();
             
             // Group contiguous memory writes
@@ -745,12 +749,47 @@ public class EmulatorService {
             
             for (Map.Entry<Address, byte[]> entry : contiguousWrites.entrySet()) {
                 Map<String, Object> writeInfo = getStringObjectMap(entry);
+                
+                // Add interpretations for multi-byte writes
+                byte[] bytes = entry.getValue();
+                if (bytes.length >= 2) {
+                    Map<String, Object> interpretations = new HashMap<>();
+                    
+                    // Add 16-bit interpretation if we have at least 2 bytes
+                    if (bytes.length >= 2) {
+                        short value16 = getShortValue(bytes, 0, isBigEndian);
+                        interpretations.put("int16", (int)value16);
+                        interpretations.put("uint16", value16 & 0xFFFF);
+                        interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
+                    }
+                    
+                    // Add 32-bit interpretation if we have at least 4 bytes
+                    if (bytes.length >= 4) {
+                        int value32 = getIntValue(bytes, 0, isBigEndian);
+                        interpretations.put("int32", value32);
+                        interpretations.put("uint32", value32 & 0xFFFFFFFFL);
+                        interpretations.put("hex32", String.format("0x%08x", value32));
+                        interpretations.put("float", Float.intBitsToFloat(value32));
+                    }
+                    
+                    // Add 64-bit interpretation if we have at least 8 bytes
+                    if (bytes.length >= 8) {
+                        long value64 = getLongValue(bytes, 0, isBigEndian);
+                        interpretations.put("int64", value64);
+                        interpretations.put("hex64", String.format("0x%016x", value64));
+                        interpretations.put("double", Double.longBitsToDouble(value64));
+                    }
+                    
+                    writeInfo.put("interpretations", interpretations);
+                }
+                
                 writes.add(writeInfo);
             }
             
             result.put("success", true);
             result.put("writes", writes);
             result.put("count", writes.size());
+            result.put("isBigEndian", isBigEndian);
             
             return result;
         } catch (Exception e) {
@@ -1022,6 +1061,9 @@ public class EmulatorService {
             // Get architecture-specific information
             ArchitectureHelper archHelper = new ArchitectureHelper(program, emulator);
             
+            // Get stack growth direction - critical for correct stack analysis
+            int stackGrowthDirection = archHelper.getStackGrowthDirection();
+            
             // Get stack pointer value using architecture helper
             String spRegName = archHelper.getStackPointerRegisterName();
             if (spRegName == null) {
@@ -1039,6 +1081,8 @@ public class EmulatorService {
             frame.put("instruction", instructionAddress.toString());
             frame.put("stackPointer", spValue.toString(16));
             frame.put("register", spRegName);
+            frame.put("stackGrowthDirection", stackGrowthDirection);
+            frame.put("stackGrowthDirectionDesc", stackGrowthDirection > 0 ? "upward" : "downward");
             
             // Try to read some values from the stack
             Address stackAddr = program.getAddressFactory().getAddress(spValue.toString(16));
@@ -1047,12 +1091,17 @@ public class EmulatorService {
             // Get pointer size for this architecture
             int pointerSize = archHelper.getPointerSize();
             
-            // Read up to 8 stack values
+            // Read up to 8 stack values, accounting for stack growth direction
             for (int i = 0; i < 8; i++) {
                 try {
+                    // Address calculation based on stack growth direction
+                    // For a downward-growing stack (typical), we look at higher addresses for stack values
+                    // For an upward-growing stack, we look at lower addresses for stack values
+                    Address valueAddr = stackAddr.add((long) i * pointerSize * stackGrowthDirection);
+                    
                     byte[] bytes = new byte[pointerSize];
                     for (int j = 0; j < bytes.length; j++) {
-                        bytes[j] = emulator.readMemoryByte(stackAddr.add((long) i * pointerSize + j));
+                        bytes[j] = emulator.readMemoryByte(valueAddr.add(j));
                     }
                     
                     Map<String, Object> entry = new HashMap<>();
@@ -1064,6 +1113,9 @@ public class EmulatorService {
                         hexValue.append(String.format("%02x", b));
                     }
                     entry.put("value", "0x" + hexValue);
+                    
+                    // Include the address of this stack value
+                    entry.put("address", valueAddr.toString());
                     
                     stackValues.add(entry);
                 } catch (Exception e) {
@@ -1356,6 +1408,10 @@ public class EmulatorService {
             EmulatorHelper emulator = session.getEmulator();
             Program program = session.getProgram();
             
+            // Get architecture information
+            ArchitectureHelper archHelper = new ArchitectureHelper(program, emulator);
+            boolean isBigEndian = archHelper.isBigEndian();
+            
             // Parse address
             Address address = program.getAddressFactory().getAddress(addressStr);
             if (address == null) {
@@ -1385,6 +1441,7 @@ public class EmulatorService {
             result.put("success", true);
             result.put("address", address.toString());
             result.put("bytesWritten", bytes.length);
+            result.put("isBigEndian", isBigEndian);
             
             return result;
         } catch (Exception e) {
@@ -1421,6 +1478,10 @@ public class EmulatorService {
         try {
             EmulatorHelper emulator = session.getEmulator();
             Program program = session.getProgram();
+            
+            // Get architecture information
+            ArchitectureHelper archHelper = new ArchitectureHelper(program, emulator);
+            boolean isBigEndian = archHelper.isBigEndian();
             
             // Parse address
             Address address = program.getAddressFactory().getAddress(addressStr);
@@ -1461,6 +1522,39 @@ public class EmulatorService {
             result.put("length", length);
             result.put("hexValue", hexString.toString());
             result.put("asciiValue", asciiString.toString());
+            result.put("isBigEndian", isBigEndian);
+            
+            // If we have enough bytes, provide multi-byte interpretations
+            if (length >= 2) {
+                Map<String, Object> interpretations = new HashMap<>();
+                
+                // Provide 16-bit interpretation if we have at least 2 bytes
+                if (length >= 2) {
+                    short value16 = getShortValue(bytes, 0, isBigEndian);
+                    interpretations.put("int16", (int)value16);
+                    interpretations.put("uint16", value16 & 0xFFFF);
+                    interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
+                }
+                
+                // Provide 32-bit interpretation if we have at least 4 bytes
+                if (length >= 4) {
+                    int value32 = getIntValue(bytes, 0, isBigEndian);
+                    interpretations.put("int32", value32);
+                    interpretations.put("uint32", value32 & 0xFFFFFFFFL);
+                    interpretations.put("hex32", String.format("0x%08x", value32));
+                    interpretations.put("float", Float.intBitsToFloat(value32));
+                }
+                
+                // Provide 64-bit interpretation if we have at least 8 bytes
+                if (length >= 8) {
+                    long value64 = getLongValue(bytes, 0, isBigEndian);
+                    interpretations.put("int64", value64);
+                    interpretations.put("hex64", String.format("0x%016x", value64));
+                    interpretations.put("double", Double.longBitsToDouble(value64));
+                }
+                
+                result.put("interpretations", interpretations);
+            }
             
             return result;
         } catch (Exception e) {
@@ -1468,6 +1562,74 @@ public class EmulatorService {
             result.put("success", false);
             result.put("error", "Error reading memory: " + e.getMessage());
             return result;
+        }
+    }
+    
+    /**
+     * Helper method to extract a short (16-bit) value from a byte array with endian awareness
+     * 
+     * @param bytes The byte array
+     * @param offset The offset into the array
+     * @param isBigEndian Whether to use big-endian byte ordering
+     * @return The short value
+     */
+    private static short getShortValue(byte[] bytes, int offset, boolean isBigEndian) {
+        if (isBigEndian) {
+            return (short)(((bytes[offset] & 0xFF) << 8) | (bytes[offset + 1] & 0xFF));
+        } else {
+            return (short)(((bytes[offset + 1] & 0xFF) << 8) | (bytes[offset] & 0xFF));
+        }
+    }
+    
+    /**
+     * Helper method to extract an int (32-bit) value from a byte array with endian awareness
+     * 
+     * @param bytes The byte array
+     * @param offset The offset into the array
+     * @param isBigEndian Whether to use big-endian byte ordering
+     * @return The int value
+     */
+    private static int getIntValue(byte[] bytes, int offset, boolean isBigEndian) {
+        if (isBigEndian) {
+            return ((bytes[offset] & 0xFF) << 24) |
+                   ((bytes[offset + 1] & 0xFF) << 16) |
+                   ((bytes[offset + 2] & 0xFF) << 8) |
+                   (bytes[offset + 3] & 0xFF);
+        } else {
+            return ((bytes[offset + 3] & 0xFF) << 24) |
+                   ((bytes[offset + 2] & 0xFF) << 16) |
+                   ((bytes[offset + 1] & 0xFF) << 8) |
+                   (bytes[offset] & 0xFF);
+        }
+    }
+    
+    /**
+     * Helper method to extract a long (64-bit) value from a byte array with endian awareness
+     * 
+     * @param bytes The byte array
+     * @param offset The offset into the array
+     * @param isBigEndian Whether to use big-endian byte ordering
+     * @return The long value
+     */
+    private static long getLongValue(byte[] bytes, int offset, boolean isBigEndian) {
+        if (isBigEndian) {
+            return ((long)(bytes[offset] & 0xFF) << 56) |
+                   ((long)(bytes[offset + 1] & 0xFF) << 48) |
+                   ((long)(bytes[offset + 2] & 0xFF) << 40) |
+                   ((long)(bytes[offset + 3] & 0xFF) << 32) |
+                   ((long)(bytes[offset + 4] & 0xFF) << 24) |
+                   ((long)(bytes[offset + 5] & 0xFF) << 16) |
+                   ((long)(bytes[offset + 6] & 0xFF) << 8) |
+                   (bytes[offset + 7] & 0xFF);
+        } else {
+            return ((long)(bytes[offset + 7] & 0xFF) << 56) |
+                   ((long)(bytes[offset + 6] & 0xFF) << 48) |
+                   ((long)(bytes[offset + 5] & 0xFF) << 40) |
+                   ((long)(bytes[offset + 4] & 0xFF) << 32) |
+                   ((long)(bytes[offset + 3] & 0xFF) << 24) |
+                   ((long)(bytes[offset + 2] & 0xFF) << 16) |
+                   ((long)(bytes[offset + 1] & 0xFF) << 8) |
+                   (bytes[offset] & 0xFF);
         }
     }
     
@@ -1640,6 +1802,10 @@ public class EmulatorService {
                 return result;
             }
             
+            // Get architecture information
+            ArchitectureHelper archHelper = new ArchitectureHelper(session.getProgram(), session.getEmulator());
+            boolean isBigEndian = archHelper.isBigEndian();
+            
             List<Map<String, Object>> reads = new ArrayList<>();
             
             // Group contiguous memory reads
@@ -1647,12 +1813,47 @@ public class EmulatorService {
             
             for (Map.Entry<Address, byte[]> entry : contiguousReads.entrySet()) {
                 Map<String, Object> readInfo = getStringObjectMap(entry);
+                
+                // Add interpretations for multi-byte reads
+                byte[] bytes = entry.getValue();
+                if (bytes.length >= 2) {
+                    Map<String, Object> interpretations = new HashMap<>();
+                    
+                    // Add 16-bit interpretation if we have at least 2 bytes
+                    if (bytes.length >= 2) {
+                        short value16 = getShortValue(bytes, 0, isBigEndian);
+                        interpretations.put("int16", (int)value16);
+                        interpretations.put("uint16", value16 & 0xFFFF);
+                        interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
+                    }
+                    
+                    // Add 32-bit interpretation if we have at least 4 bytes
+                    if (bytes.length >= 4) {
+                        int value32 = getIntValue(bytes, 0, isBigEndian);
+                        interpretations.put("int32", value32);
+                        interpretations.put("uint32", value32 & 0xFFFFFFFFL);
+                        interpretations.put("hex32", String.format("0x%08x", value32));
+                        interpretations.put("float", Float.intBitsToFloat(value32));
+                    }
+                    
+                    // Add 64-bit interpretation if we have at least 8 bytes
+                    if (bytes.length >= 8) {
+                        long value64 = getLongValue(bytes, 0, isBigEndian);
+                        interpretations.put("int64", value64);
+                        interpretations.put("hex64", String.format("0x%016x", value64));
+                        interpretations.put("double", Double.longBitsToDouble(value64));
+                    }
+                    
+                    readInfo.put("interpretations", interpretations);
+                }
+                
                 reads.add(readInfo);
             }
             
             result.put("success", true);
             result.put("reads", reads);
             result.put("count", reads.size());
+            result.put("isBigEndian", isBigEndian);
             
             return result;
         } catch (Exception e) {
