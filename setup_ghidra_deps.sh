@@ -38,6 +38,7 @@ REQUIRED_JARS=(
   "DB.jar"
   "Gui.jar"
   "Help.jar"
+  "Emulation.jar"
 )
 
 echo "Searching for Ghidra JAR files in $GHIDRA_PATH..."

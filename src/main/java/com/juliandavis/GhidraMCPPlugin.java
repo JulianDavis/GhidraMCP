@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class GhidraMCPPlugin extends Plugin {
 
     private HttpServer server;
+    private EmulatorHttpHandler emulatorHandler;
 
     public GhidraMCPPlugin(PluginTool tool) {
         super(tool);
@@ -51,6 +52,13 @@ public class GhidraMCPPlugin extends Plugin {
         catch (IOException e) {
             Msg.error(this, "Failed to start HTTP server", e);
         }
+    }
+    
+    /**
+     * Get the HTTP server instance
+     */
+    public HttpServer getServer() {
+        return server;
     }
 
     private void startServer() throws IOException {
@@ -85,13 +93,13 @@ public class GhidraMCPPlugin extends Plugin {
             String oldName = params.get("oldName");
             String newName = params.get("newName");
             boolean success = renameFunction(oldName, newName);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", success);
             response.put("oldName", oldName);
             response.put("newName", newName);
             response.put("message", success ? "Renamed successfully" : "Rename failed");
-            
+
             sendJsonResponse(exchange, response);
         });
 
@@ -100,13 +108,13 @@ public class GhidraMCPPlugin extends Plugin {
             String address = params.get("address");
             String newName = params.get("newName");
             boolean success = renameDataAtAddress(address, newName);
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", success);
             response.put("address", address);
             response.put("newName", newName);
             response.put("message", "Rename data attempted");
-            
+
             sendJsonResponse(exchange, response);
         });
 
@@ -152,38 +160,67 @@ public class GhidraMCPPlugin extends Plugin {
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             sendJsonResponse(exchange, searchFunctionsByName(searchTerm, offset, limit));
         });
-        
+
         server.createContext("/programInfo", exchange -> {
-            sendJsonResponse(exchange, getProgramMetadata());
+            Map<String, String> qparams = parseQueryParams(exchange);
+            boolean includeDetailedStats = "full".equals(qparams.get("detail"));
+            sendJsonResponse(exchange, getProgramMetadata(includeDetailedStats));
         });
-        
+
+        // Add specialized time-bounded stats endpoints
+        server.createContext("/programInfo/functionStats", exchange -> {
+            Map<String, String> qparams = parseQueryParams(exchange);
+            String continuationToken = qparams.get("continuationToken");
+            int limit = parseIntOrDefault(qparams.get("limit"), 5000);
+            sendJsonResponse(exchange, getFunctionStats(continuationToken, limit));
+        });
+
+        server.createContext("/programInfo/symbolStats", exchange -> {
+            Map<String, String> qparams = parseQueryParams(exchange);
+            String continuationToken = qparams.get("continuationToken");
+            int limit = parseIntOrDefault(qparams.get("limit"), 5000);
+            String symbolType = qparams.get("symbolType"); // Optional filter
+            sendJsonResponse(exchange, getSymbolStats(continuationToken, limit, symbolType));
+        });
+
+        server.createContext("/programInfo/dataTypeStats", exchange -> {
+            Map<String, String> qparams = parseQueryParams(exchange);
+            String continuationToken = qparams.get("continuationToken");
+            int limit = parseIntOrDefault(qparams.get("limit"), 5000);
+            sendJsonResponse(exchange, getDataTypeStats(continuationToken, limit));
+        });
+
         server.createContext("/xrefs", exchange -> {
             Map<String, String> qparams = parseQueryParams(exchange);
             String address = qparams.get("address");
             sendJsonResponse(exchange, getReferencesAtAddress(address));
         });
-        
+
         server.createContext("/disassemble", exchange -> {
             Map<String, String> qparams = parseQueryParams(exchange);
             String address = qparams.get("address");
             int length = parseIntOrDefault(qparams.get("length"), 10);  // Default to 10 instructions
             sendJsonResponse(exchange, getDisassemblyAtAddress(address, length));
         });
-        
+
         server.createContext("/disassembleFunction", exchange -> {
             String name = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             sendJsonResponse(exchange, getDisassemblyForFunction(name));
         });
-        
+
         server.createContext("/setComment", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
             String comment = params.get("comment");
             int commentType = parseIntOrDefault(params.get("type"), CodeUnit.EOL_COMMENT); // Default to end-of-line comment
-            
+
             sendJsonResponse(exchange, setCommentAtAddress(address, comment, commentType));
         });
 
+        // Initialize and register emulator endpoints
+        emulatorHandler = new EmulatorHttpHandler(this);
+        emulatorHandler.registerEndpoints();
+        
         server.setExecutor(null);
         new Thread(() -> {
             server.start();
@@ -203,20 +240,20 @@ public class GhidraMCPPlugin extends Plugin {
 
         List<Map<String, Object>> functions = new ArrayList<>();
         List<Function> allFunctions = new ArrayList<>();
-        
+
         // Collect all functions first
         program.getFunctionManager().getFunctions(true).forEach(allFunctions::add);
-        
+
         // Sort by name for consistent ordering
         allFunctions.sort(Comparator.comparing(Function::getName));
-        
+
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(allFunctions.size(), offset + limit);
-        List<Function> pagedFunctions = start >= allFunctions.size() ? 
-                                      new ArrayList<>() : 
+        List<Function> pagedFunctions = start >= allFunctions.size() ?
+                                      new ArrayList<>() :
                                       allFunctions.subList(start, end);
-        
+
         // Create rich function objects with more data
         for (Function f : pagedFunctions) {
             Map<String, Object> functionData = new HashMap<>();
@@ -227,7 +264,7 @@ public class GhidraMCPPlugin extends Plugin {
             functionData.put("parameterCount", f.getParameterCount());
             functions.add(functionData);
         }
-        
+
         // Create paginated response
         return createPaginatedResponse(functions, allFunctions.size(), offset, limit);
     }
@@ -240,7 +277,7 @@ public class GhidraMCPPlugin extends Plugin {
 
         Set<String> classNamesSet = new HashSet<>();
         Map<String, Namespace> classMap = new HashMap<>();
-        
+
         // Collect all classes
         for (Symbol symbol : program.getSymbolTable().getAllSymbols(true)) {
             Namespace ns = symbol.getParentNamespace();
@@ -249,18 +286,18 @@ public class GhidraMCPPlugin extends Plugin {
                 classMap.put(ns.getName(), ns);
             }
         }
-        
+
         // Convert to list and sort for consistent ordering
         List<String> sortedNames = new ArrayList<>(classNamesSet);
         Collections.sort(sortedNames);
-        
+
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(sortedNames.size(), offset + limit);
-        List<String> pagedNames = start >= sortedNames.size() ? 
-                                new ArrayList<>() : 
+        List<String> pagedNames = start >= sortedNames.size() ?
+                                new ArrayList<>() :
                                 sortedNames.subList(start, end);
-        
+
         // Create rich class objects with more data
         List<Map<String, Object>> classes = new ArrayList<>();
         for (String className : pagedNames) {
@@ -271,7 +308,7 @@ public class GhidraMCPPlugin extends Plugin {
             classData.put("parentNamespace", ns.getParentNamespace().getName());
             classes.add(classData);
         }
-        
+
         // Create paginated response
         return createPaginatedResponse(classes, sortedNames.size(), offset, limit);
     }
@@ -286,14 +323,14 @@ public class GhidraMCPPlugin extends Plugin {
 
         // Collect all memory blocks
         List<MemoryBlock> blocks = new ArrayList<>(Arrays.asList(program.getMemory().getBlocks()));
-        
+
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(blocks.size(), offset + limit);
-        List<MemoryBlock> pagedBlocks = start >= blocks.size() ? 
-                                       new ArrayList<>() : 
+        List<MemoryBlock> pagedBlocks = start >= blocks.size() ?
+                                       new ArrayList<>() :
                                        blocks.subList(start, end);
-        
+
         // Create rich segment objects with more data
         for (MemoryBlock block : pagedBlocks) {
             Map<String, Object> segmentData = new HashMap<>();
@@ -306,7 +343,7 @@ public class GhidraMCPPlugin extends Plugin {
             segmentData.put("executable", block.isExecute());
             segments.add(segmentData);
         }
-        
+
         // Create paginated response
         return createPaginatedResponse(segments, blocks.size(), offset, limit);
     }
@@ -319,17 +356,17 @@ public class GhidraMCPPlugin extends Plugin {
 
         List<Map<String, Object>> imports = new ArrayList<>();
         List<Symbol> externalSymbols = new ArrayList<>();
-        
+
         // Collect all external symbols
         program.getSymbolTable().getExternalSymbols().forEach(externalSymbols::add);
-        
+
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(externalSymbols.size(), offset + limit);
-        List<Symbol> pagedSymbols = start >= externalSymbols.size() ? 
-                                   new ArrayList<>() : 
+        List<Symbol> pagedSymbols = start >= externalSymbols.size() ?
+                                   new ArrayList<>() :
                                    externalSymbols.subList(start, end);
-        
+
         // Create rich import objects with more data
         for (Symbol symbol : pagedSymbols) {
             Map<String, Object> importData = new HashMap<>();
@@ -339,7 +376,7 @@ public class GhidraMCPPlugin extends Plugin {
             importData.put("symbolType", symbol.getSymbolType().toString());
             imports.add(importData);
         }
-        
+
         // Create paginated response
         return createPaginatedResponse(imports, externalSymbols.size(), offset, limit);
     }
@@ -352,7 +389,7 @@ public class GhidraMCPPlugin extends Plugin {
 
         List<Map<String, Object>> exports = new ArrayList<>();
         List<Symbol> exportSymbols = new ArrayList<>();
-        
+
         // Collect all export symbols
         SymbolTable table = program.getSymbolTable();
         SymbolIterator it = table.getAllSymbols(true);
@@ -363,14 +400,14 @@ public class GhidraMCPPlugin extends Plugin {
                 exportSymbols.add(s);
             }
         }
-        
+
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(exportSymbols.size(), offset + limit);
-        List<Symbol> pagedSymbols = start >= exportSymbols.size() ? 
-                                   new ArrayList<>() : 
+        List<Symbol> pagedSymbols = start >= exportSymbols.size() ?
+                                   new ArrayList<>() :
                                    exportSymbols.subList(start, end);
-        
+
         // Create rich export objects with more data
         for (Symbol symbol : pagedSymbols) {
             Map<String, Object> exportData = new HashMap<>();
@@ -380,7 +417,7 @@ public class GhidraMCPPlugin extends Plugin {
             exportData.put("symbolType", symbol.getSymbolType().toString());
             exports.add(exportData);
         }
-        
+
         // Create paginated response
         return createPaginatedResponse(exports, exportSymbols.size(), offset, limit);
     }
@@ -392,7 +429,7 @@ public class GhidraMCPPlugin extends Plugin {
         }
 
         Set<Namespace> namespaceSet = new HashSet<>();
-        
+
         // Collect all namespaces
         for (Symbol symbol : program.getSymbolTable().getAllSymbols(true)) {
             Namespace ns = symbol.getParentNamespace();
@@ -400,18 +437,18 @@ public class GhidraMCPPlugin extends Plugin {
                 namespaceSet.add(ns);
             }
         }
-        
+
         // Convert to list and sort for consistent ordering
         List<Namespace> sortedNamespaces = new ArrayList<>(namespaceSet);
         sortedNamespaces.sort(Comparator.comparing(Namespace::getName));
-        
+
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(sortedNamespaces.size(), offset + limit);
-        List<Namespace> pagedNamespaces = start >= sortedNamespaces.size() ? 
-                                        new ArrayList<>() : 
+        List<Namespace> pagedNamespaces = start >= sortedNamespaces.size() ?
+                                        new ArrayList<>() :
                                         sortedNamespaces.subList(start, end);
-        
+
         // Create rich namespace objects with more data
         List<Map<String, Object>> namespaces = new ArrayList<>();
         for (Namespace ns : pagedNamespaces) {
@@ -421,7 +458,7 @@ public class GhidraMCPPlugin extends Plugin {
             namespaceData.put("parentNamespace", ns.getParentNamespace().getName());
             namespaces.add(namespaceData);
         }
-        
+
         // Create paginated response
         return createPaginatedResponse(namespaces, sortedNamespaces.size(), offset, limit);
     }
@@ -433,7 +470,7 @@ public class GhidraMCPPlugin extends Plugin {
         }
 
         List<Data> allData = new ArrayList<>();
-        
+
         // Collect all defined data
         for (MemoryBlock block : program.getMemory().getBlocks()) {
             DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
@@ -444,30 +481,30 @@ public class GhidraMCPPlugin extends Plugin {
                 }
             }
         }
-        
+
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(allData.size(), offset + limit);
-        List<Data> pagedData = start >= allData.size() ? 
-                             new ArrayList<>() : 
+        List<Data> pagedData = start >= allData.size() ?
+                             new ArrayList<>() :
                              allData.subList(start, end);
-        
+
         // Create rich data objects with more data
         List<Map<String, Object>> dataItems = new ArrayList<>();
         for (Data data : pagedData) {
             Map<String, Object> dataItem = new HashMap<>();
             String label = data.getLabel() != null ? data.getLabel() : "(unnamed)";
             String valRepr = data.getDefaultValueRepresentation();
-            
+
             dataItem.put("address", data.getAddress().toString());
             dataItem.put("label", escapeNonAscii(label));
             dataItem.put("value", escapeNonAscii(valRepr));
             dataItem.put("dataType", data.getDataType().getName());
             dataItem.put("dataLength", data.getLength());
-            
+
             dataItems.add(dataItem);
         }
-        
+
         // Create paginated response
         return createPaginatedResponse(dataItems, allData.size(), offset, limit);
     }
@@ -477,13 +514,13 @@ public class GhidraMCPPlugin extends Plugin {
         if (program == null) {
             return createErrorResponse("No program loaded");
         }
-        
+
         if (searchTerm == null || searchTerm.isEmpty()) {
             return createErrorResponse("Search term is required");
         }
-    
+
         List<Function> matchingFunctions = new ArrayList<>();
-        
+
         // Collect all matching functions
         for (Function func : program.getFunctionManager().getFunctions(true)) {
             String name = func.getName();
@@ -492,17 +529,17 @@ public class GhidraMCPPlugin extends Plugin {
                 matchingFunctions.add(func);
             }
         }
-        
+
         // Sort for consistent ordering
         matchingFunctions.sort(Comparator.comparing(Function::getName));
-        
+
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(matchingFunctions.size(), offset + limit);
-        List<Function> pagedFunctions = start >= matchingFunctions.size() ? 
-                                      new ArrayList<>() : 
+        List<Function> pagedFunctions = start >= matchingFunctions.size() ?
+                                      new ArrayList<>() :
                                       matchingFunctions.subList(start, end);
-        
+
         // Create rich function objects with more data
         List<Map<String, Object>> functions = new ArrayList<>();
         for (Function func : pagedFunctions) {
@@ -514,11 +551,11 @@ public class GhidraMCPPlugin extends Plugin {
             functionData.put("parameterCount", func.getParameterCount());
             functions.add(functionData);
         }
-        
+
         // Create paginated response
         return createPaginatedResponse(functions, matchingFunctions.size(), offset, limit);
     }
-    
+
     /**
      * Get disassembly listing for a specific function by name
      */
@@ -527,11 +564,11 @@ public class GhidraMCPPlugin extends Plugin {
         if (program == null) {
             return createErrorResponse("No program loaded");
         }
-        
+
         if (name == null || name.isEmpty()) {
             return createErrorResponse("Function name is required");
         }
-        
+
         try {
             // Find the function by name
             Function function = null;
@@ -541,24 +578,24 @@ public class GhidraMCPPlugin extends Plugin {
                     break;
                 }
             }
-            
+
             if (function == null) {
                 return createErrorResponse("Function not found: " + name);
             }
-            
+
             // Get function boundaries
             Address start = function.getEntryPoint();
             Address end = function.getBody().getMaxAddress();
-            
+
             // Use the address range to get disassembly
             return getDisassemblyInRange(start, end, function);
-            
+
         } catch (Exception e) {
             Msg.error(this, "Error getting disassembly for function " + name, e);
             return createErrorResponse("Error: " + e.getMessage());
         }
     }
-    
+
     /**
      * Get disassembly at a specific address for a given number of instructions
      */
@@ -567,40 +604,40 @@ public class GhidraMCPPlugin extends Plugin {
         if (program == null) {
             return createErrorResponse("No program loaded");
         }
-        
+
         if (addressStr == null || addressStr.isEmpty()) {
             return createErrorResponse("Address is required");
         }
-        
+
         if (instructionCount <= 0) {
             return createErrorResponse("Instruction count must be positive");
         }
-        
+
         try {
             Address address = program.getAddressFactory().getAddress(addressStr);
-            
+
             // Determine the containing function (if any)
             Function function = program.getFunctionManager().getFunctionContaining(address);
-            
+
             // Get all instructions starting from the given address
             List<Map<String, Object>> instructions = new ArrayList<>();
             Listing listing = program.getListing();
             int count = 0;
-            
+
             Address currentAddress = address;
             while (count < instructionCount) {
                 if (currentAddress == null || !program.getMemory().contains(currentAddress)) {
                     break;
                 }
-                
+
                 Instruction instr = listing.getInstructionAt(currentAddress);
                 if (instr == null) {
                     break;
                 }
-                
+
                 Map<String, Object> instrData = createInstructionData(instr, function);
                 instructions.add(instrData);
-                
+
                 try {
                     currentAddress = instr.getAddress().add(instr.getLength());
                 } catch (Exception e) {
@@ -608,7 +645,7 @@ public class GhidraMCPPlugin extends Plugin {
                 }
                 count++;
             }
-            
+
             Map<String, Object> result = new HashMap<>();
             result.put("address", address.toString());
             result.put("instructions", instructions);
@@ -617,24 +654,24 @@ public class GhidraMCPPlugin extends Plugin {
                 result.put("function", function.getName());
             }
             result.put("success", true);
-            
+
             return result;
-            
+
         } catch (Exception e) {
             Msg.error(this, "Error getting disassembly for address " + addressStr, e);
             return createErrorResponse("Invalid address or error: " + e.getMessage());
         }
     }
-    
+
     /**
      * Get disassembly for an address range (internal method)
      */
     private Map<String, Object> getDisassemblyInRange(Address start, Address end, Function function) throws MemoryAccessException {
         Program program = getCurrentProgram();
         Listing listing = program.getListing();
-        
+
         List<Map<String, Object>> instructions = new ArrayList<>();
-        
+
         Address currentAddress = start;
         while (currentAddress != null && currentAddress.compareTo(end) <= 0) {
             if (!program.getMemory().contains(currentAddress)) {
@@ -642,16 +679,16 @@ public class GhidraMCPPlugin extends Plugin {
                 currentAddress = currentAddress.add(1);
                 continue;
             }
-            
+
             Instruction instr = listing.getInstructionAt(currentAddress);
             if (instr == null) {
                 currentAddress = currentAddress.add(1);
                 continue;
             }
-            
+
             Map<String, Object> instrData = createInstructionData(instr, function);
             instructions.add(instrData);
-            
+
             // Go to the next instruction
             try {
                 currentAddress = instr.getAddress().add(instr.getLength());
@@ -659,7 +696,7 @@ public class GhidraMCPPlugin extends Plugin {
                 currentAddress = currentAddress.add(1);
             }
         }
-        
+
         Map<String, Object> result = new HashMap<>();
         result.put("start", start.toString());
         result.put("end", end.toString());
@@ -670,10 +707,10 @@ public class GhidraMCPPlugin extends Plugin {
             result.put("signature", function.getSignature().toString());
         }
         result.put("success", true);
-        
+
         return result;
     }
-    
+
     /**
      * Create a map of instruction data (internal helper)
      */
@@ -682,11 +719,11 @@ public class GhidraMCPPlugin extends Plugin {
         instrData.put("address", instr.getAddress().toString());
         instrData.put("bytes", bytesToHexString(instr.getParsedBytes()));
         instrData.put("mnemonic", instr.getMnemonicString());
-        
+
         // Get the full representation with operands
         String representation = instr.toString();
         instrData.put("representation", representation);
-        
+
         // Extract operands info
         List<Map<String, Object>> operands = new ArrayList<>();
         for (int i = 0; i < instr.getNumOperands(); i++) {
@@ -694,80 +731,80 @@ public class GhidraMCPPlugin extends Plugin {
             operandData.put("index", i);
             operandData.put("text", instr.getDefaultOperandRepresentation(i));
             operandData.put("type", instr.getOperandType(i));
-            
+
             // For references, include the target information
             int opType = instr.getOperandType(i);
             boolean hasReference = false;
-            
+
             // Check if this operand has any references
             Reference[] refs = instr.getOperandReferences(i);
             if (refs != null && refs.length > 0) {
                 hasReference = true;
-                
+
                 List<Map<String, Object>> refList = new ArrayList<>();
-                
+
                 for (Reference ref : refs) {
                     Map<String, Object> refData = new HashMap<>();
                     refData.put("toAddress", ref.getToAddress().toString());
                     refData.put("type", ref.getReferenceType().toString());
-                    
+
                     // Add target information if it's a function
                     Function targetFunc = getCurrentProgram().getFunctionManager().getFunctionAt(ref.getToAddress());
                     if (targetFunc != null) {
                         refData.put("toFunction", targetFunc.getName());
                     }
-                    
+
                     refList.add(refData);
                 }
-                
+
                 operandData.put("references", refList);
             }
-            
+
             operands.add(operandData);
         }
         instrData.put("operands", operands);
-        
+
         // Add any comments
         String comment = getCurrentProgram().getListing().getComment(
                 CodeUnit.PLATE_COMMENT, instr.getAddress());
         if (comment != null && !comment.isEmpty()) {
             instrData.put("plateComment", comment);
         }
-        
+
         comment = getCurrentProgram().getListing().getComment(
                 CodeUnit.PRE_COMMENT, instr.getAddress());
         if (comment != null && !comment.isEmpty()) {
             instrData.put("preComment", comment);
         }
-        
+
         comment = getCurrentProgram().getListing().getComment(
                 CodeUnit.EOL_COMMENT, instr.getAddress());
         if (comment != null && !comment.isEmpty()) {
             instrData.put("eolComment", comment);
         }
-        
+
         comment = getCurrentProgram().getListing().getComment(
                 CodeUnit.POST_COMMENT, instr.getAddress());
         if (comment != null && !comment.isEmpty()) {
             instrData.put("postComment", comment);
         }
-        
+
         // If this instruction is the entry point of a function, mark it
         Function funcAtAddr = getCurrentProgram().getFunctionManager().getFunctionAt(instr.getAddress());
         if (funcAtAddr != null) {
             instrData.put("isEntryPoint", true);
             instrData.put("functionName", funcAtAddr.getName());
         }
-        
+
         // Determine relative position in the containing function
         if (function != null) {
             long offset = instr.getAddress().subtract(function.getEntryPoint());
             instrData.put("functionOffset", offset);
         }
-        
+
         return instrData;
     }
-    
+
     /**
      * Convert byte array to hex string (internal helper)
      */
@@ -778,7 +815,7 @@ public class GhidraMCPPlugin extends Plugin {
         }
         return sb.toString();
     }
-    
+
     /**
      * Set a comment at the specified address
      */
@@ -787,29 +824,29 @@ public class GhidraMCPPlugin extends Plugin {
         if (program == null) {
             return createErrorResponse("No program loaded");
         }
-        
+
         if (addressStr == null || addressStr.isEmpty()) {
             return createErrorResponse("Address is required");
         }
-        
+
         // Validate comment type
-        if (commentType != CodeUnit.PLATE_COMMENT && 
-            commentType != CodeUnit.PRE_COMMENT && 
-            commentType != CodeUnit.EOL_COMMENT && 
-            commentType != CodeUnit.POST_COMMENT && 
+        if (commentType != CodeUnit.PLATE_COMMENT &&
+            commentType != CodeUnit.PRE_COMMENT &&
+            commentType != CodeUnit.EOL_COMMENT &&
+            commentType != CodeUnit.POST_COMMENT &&
             commentType != CodeUnit.REPEATABLE_COMMENT) {
-            
+
             return createErrorResponse("Invalid comment type: " + commentType);
         }
-        
+
         AtomicBoolean successFlag = new AtomicBoolean(false);
-        
+
         try {
             SwingUtilities.invokeAndWait(() -> {
                 int tx = program.startTransaction("Set comment");
                 try {
                     Address address = program.getAddressFactory().getAddress(addressStr);
-                    
+
                     // Get the code unit at this address (could be an instruction or data)
                     CodeUnit codeUnit = program.getListing().getCodeUnitAt(address);
                     if (codeUnit != null) {
@@ -831,12 +868,12 @@ public class GhidraMCPPlugin extends Plugin {
             Msg.error(this, "Failed to execute set comment on Swing thread", e);
             return createErrorResponse("Error: " + e.getMessage());
         }
-        
+
         Map<String, Object> result = new HashMap<>();
         result.put("success", successFlag.get());
         result.put("address", addressStr);
         result.put("commentType", commentType);
-        
+
         // If we know comment type names, include them
         String commentTypeName;
         switch (commentType) {
@@ -859,14 +896,14 @@ public class GhidraMCPPlugin extends Plugin {
                 commentTypeName = "UNKNOWN";
         }
         result.put("commentTypeName", commentTypeName);
-        
+
         if (!successFlag.get()) {
             result.put("message", "Failed to set comment - no code unit at address");
         }
-        
+
         return result;
     }
-    
+
     /**
      * Get all references to and from the specified address
      */
@@ -875,14 +912,14 @@ public class GhidraMCPPlugin extends Plugin {
         if (program == null) {
             return createErrorResponse("No program loaded");
         }
-        
+
         if (addressStr == null || addressStr.isEmpty()) {
             return createErrorResponse("Address is required");
         }
-        
+
         try {
             Address address = program.getAddressFactory().getAddress(addressStr);
-            
+
             // Get all references to this address (where this is the target)
             List<Map<String, Object>> referencesToHere = new ArrayList<>();
             ReferenceIterator refsToIter = program.getReferenceManager().getReferencesTo(address);
@@ -894,18 +931,18 @@ public class GhidraMCPPlugin extends Plugin {
                 reference.put("type", ref.getReferenceType().toString());
                 reference.put("isData", !ref.isMemoryReference());
                 reference.put("isPrimary", ref.isPrimary());
-                
+
                 // Add source context if it's a function
                 Function fromFunc = program.getFunctionManager().getFunctionAt(ref.getFromAddress());
                 if (fromFunc != null) {
                     reference.put("fromFunction", fromFunc.getName());
-                    reference.put("fromFunctionOffset", 
+                    reference.put("fromFunctionOffset",
                             ref.getFromAddress().subtract(fromFunc.getEntryPoint()));
                 }
-                
+
                 referencesToHere.add(reference);
             }
-            
+
             // Get all references from this address (where this is the source)
             List<Map<String, Object>> referencesFromHere = new ArrayList<>();
             Reference[] refsFrom = program.getReferenceManager().getReferencesFrom(address);
@@ -916,41 +953,80 @@ public class GhidraMCPPlugin extends Plugin {
                 reference.put("type", ref.getReferenceType().toString());
                 reference.put("isData", !ref.isMemoryReference());
                 reference.put("isPrimary", ref.isPrimary());
-                
+
                 // Add target context if it's a function
                 Function toFunc = program.getFunctionManager().getFunctionAt(ref.getToAddress());
                 if (toFunc != null) {
                     reference.put("toFunction", toFunc.getName());
                 }
-                
+
                 referencesFromHere.add(reference);
             }
-            
+
             Map<String, Object> result = new HashMap<>();
             result.put("address", address.toString());
             result.put("referencesToHere", referencesToHere);
             result.put("referencesFromHere", referencesFromHere);
             result.put("success", true);
-            
+
             return result;
-            
+
         } catch (Exception e) {
             Msg.error(this, "Error getting references for address " + addressStr, e);
             return createErrorResponse("Invalid address or error retrieving references: " + e.getMessage());
         }
     }
-    
+
+    // Cache for program metadata to avoid redundant calculations
+    private Map<String, Object> cachedBasicMetadata = null;
+    private Map<String, Object> cachedFullMetadata = null;
+    private long lastModificationTime = 0;
+
     /**
      * Get detailed metadata about the currently loaded program
+     *
+     * @param includeDetailedStats Whether to include detailed statistics (which can be expensive to compute)
+     * @return Map containing program metadata or error response
      */
-    private Map<String, Object> getProgramMetadata() {
+    private Map<String, Object> getProgramMetadata(boolean includeDetailedStats) {
         Program program = getCurrentProgram();
         if (program == null) {
             return createErrorResponse("No program loaded");
         }
-        
+
+        // Check if we can use cached data
+        if (program.getModificationNumber() == lastModificationTime) {
+            if (includeDetailedStats && cachedFullMetadata != null) {
+                return Map.of("success", true, "programInfo", cachedFullMetadata);
+            } else if (!includeDetailedStats && cachedBasicMetadata != null) {
+                return Map.of("success", true, "programInfo", cachedBasicMetadata);
+            }
+        }
+
+        // Update cache timestamp
+        lastModificationTime = program.getModificationNumber();
+
+        // Create metadata with appropriate level of detail
         Map<String, Object> metadata = new HashMap<>();
-        
+
+        // Basic program information (always include)
+        addBasicProgramInfo(program, metadata);
+
+        // Add detailed stats if requested
+        if (includeDetailedStats) {
+            addDetailedProgramStats(program, metadata);
+            cachedFullMetadata = metadata;
+        } else {
+            cachedBasicMetadata = metadata;
+        }
+
+        return Map.of("success", true, "programInfo", metadata);
+    }
+
+    /**
+     * Add basic program information (fast to compute)
+     */
+    private void addBasicProgramInfo(Program program, Map<String, Object> metadata) {
         // Basic program information
         metadata.put("name", program.getName());
         metadata.put("location", program.getExecutablePath());
@@ -960,8 +1036,8 @@ public class GhidraMCPPlugin extends Plugin {
         metadata.put("imageBase", program.getImageBase().toString());
         metadata.put("executableFormat", program.getExecutableFormat());
         metadata.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
-        
-        // Memory statistics
+
+        // Quick memory statistics
         Map<String, Object> memoryStats = new HashMap<>();
         long totalBytes = 0;
         for (MemoryBlock block : program.getMemory().getBlocks()) {
@@ -970,95 +1046,329 @@ public class GhidraMCPPlugin extends Plugin {
         memoryStats.put("totalSize", totalBytes);
         memoryStats.put("blockCount", program.getMemory().getBlocks().length);
         metadata.put("memory", memoryStats);
-        
-        // Function statistics
+
+        // Simple function count
         Map<String, Object> functionStats = new HashMap<>();
-        FunctionManager functionManager = program.getFunctionManager();
-        functionStats.put("totalCount", functionManager.getFunctionCount());
-        
-        // Count external functions
-        int externalCount = 0;
-        int internalCount = 0;
-        for (Function func : functionManager.getFunctions(true)) {
-            if (func.isExternal()) {
-                externalCount++;
-            } else {
-                internalCount++;
-            }
-        }
-        functionStats.put("externalCount", externalCount);
-        functionStats.put("internalCount", internalCount);
+        functionStats.put("totalCount", program.getFunctionManager().getFunctionCount());
         metadata.put("functions", functionStats);
-        
-        // Symbol statistics
+
+        // Simple symbol count
         Map<String, Object> symbolStats = new HashMap<>();
-        SymbolTable symbolTable = program.getSymbolTable();
-        symbolStats.put("totalCount", symbolTable.getNumSymbols());
-        
-        // Count external symbols
-        int externalSymbolCount = 0;
-        SymbolIterator extSymIt = symbolTable.getExternalSymbols();
-        while (extSymIt.hasNext()) {
-            extSymIt.next();
-            externalSymbolCount++;
-        }
-        symbolStats.put("externalCount", externalSymbolCount);
-        
-        // Count label symbols (approximate by checking primary symbols at all addresses)
-        int labelCount = 0;
-        AddressIterator addrIt = program.getMemory().getAddresses(true);
-        while (addrIt.hasNext()) {
-            Address addr = addrIt.next();
-            Symbol primarySymbol = symbolTable.getPrimarySymbol(addr);
-            if (primarySymbol != null && primarySymbol.getSymbolType() == SymbolType.LABEL) {
-                labelCount++;
-            }
-        }
-        symbolStats.put("labelCount", labelCount);
-        
-        // Count namespaces (approximate by namespace type)
-        int namespaceCount = 0;
-        SymbolIterator allSymIt = symbolTable.getAllSymbols(false);
-        while (allSymIt.hasNext()) {
-            Symbol sym = allSymIt.next();
-            if (sym.getSymbolType() == SymbolType.NAMESPACE) {
-                namespaceCount++;
-            }
-        }
-        symbolStats.put("namespaceCount", namespaceCount);
-        
+        symbolStats.put("totalCount", program.getSymbolTable().getNumSymbols());
         metadata.put("symbols", symbolStats);
-        
-        // Data type statistics
-        Map<String, Object> dataTypeStats = new HashMap<>();
-        
-        // Count built-in and user-defined data types
-        int builtInCount = 0;
-        int userDefinedCount = 0;
-        Iterator<ghidra.program.model.data.DataType> dtIterator = program.getDataTypeManager().getAllDataTypes();
-        while (dtIterator.hasNext()) {
-            ghidra.program.model.data.DataType dt = dtIterator.next();
-            if (dt.getSourceArchive().getArchiveType() == ghidra.program.model.data.ArchiveType.BUILT_IN) {
-                builtInCount++;
-            } else {
-                userDefinedCount++;
-            }
-        }
-        
-        dataTypeStats.put("builtInCount", builtInCount);
-        dataTypeStats.put("userDefinedCount", userDefinedCount);
-        metadata.put("dataTypes", dataTypeStats);
-        
-        // Processor architecture info
+
+        // Processor architecture info (fast to compute)
         Map<String, Object> processorInfo = new HashMap<>();
         processorInfo.put("name", program.getLanguage().getProcessor().toString());
         processorInfo.put("endian", program.getLanguage().isBigEndian() ? "big" : "little");
         processorInfo.put("wordSize", program.getLanguage().getLanguageDescription().getSize());
         metadata.put("processor", processorInfo);
-        
+    }
+
+    /**
+     * Get function statistics with time-bounded processing and continuation support
+     *
+     * @param continuationToken Token from a previous request to resume processing
+     * @param limit Maximum number of functions to process in this request
+     * @return Response with function statistics and continuation info
+     */
+    private Map<String, Object> getFunctionStats(String continuationToken, int limit) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        Map<String, Object> stats = new HashMap<>();
+
+        // Always include total count (fast operation)
+        FunctionManager functionManager = program.getFunctionManager();
+        stats.put("totalCount", functionManager.getFunctionCount());
+
+        // Parse continuation token
+        int externalProcessed = 0;
+        int internalProcessed = 0;
+
+        if (continuationToken != null && !continuationToken.isEmpty()) {
+            String[] parts = continuationToken.split(":");
+            if (parts.length == 2) {
+                try {
+                    externalProcessed = Integer.parseInt(parts[0]);
+                    internalProcessed = Integer.parseInt(parts[1]);
+                } catch (NumberFormatException e) {
+                    Msg.warn(this, "Invalid continuation token: " + continuationToken);
+                }
+            }
+        }
+
+        // Count functions within time constraints
+        int externalCount = externalProcessed;
+        int internalCount = internalProcessed;
+        int processedCount = 0;
+
+        Iterator<Function> it = functionManager.getFunctions(true);
+        long startTime = System.currentTimeMillis();
+        final long MAX_PROCESSING_TIME = 25000; // 25 seconds, giving 5 seconds buffer
+
+        // Skip already processed functions
+        int totalToSkip = externalProcessed + internalProcessed;
+        int skipped = 0;
+        while (it.hasNext() && skipped < totalToSkip) {
+            it.next();
+            skipped++;
+        }
+
+        // Process functions up to the limit or time constraint
+        while (it.hasNext() && processedCount < limit) {
+            // Check time constraints
+            if (System.currentTimeMillis() - startTime > MAX_PROCESSING_TIME) {
+                break;
+            }
+
+            Function func = it.next();
+            if (func.isExternal()) {
+                externalCount++;
+            } else {
+                internalCount++;
+            }
+
+            processedCount++;
+        }
+
+        // Determine if processing is complete
+        boolean isComplete = !it.hasNext();
+
+        // Add stats to response
+        stats.put("externalCount", externalCount);
+        stats.put("internalCount", internalCount);
+        stats.put("processedCount", externalProcessed + internalProcessed + processedCount);
+
+        // Build response
+        response.put("stats", stats);
+        response.put("isComplete", isComplete);
+        if (!isComplete) {
+            response.put("continuationToken", externalCount + ":" + internalCount);
+        }
+
+        return Map.of(
+                "success", true,
+                "functionStats", stats,
+                "isComplete", isComplete,
+                "continuationToken", isComplete ? "" : externalCount + ":" + internalCount
+        );
+    }
+
+    /**
+     * Add detailed program statistics (potentially slow for large programs)
+     */
+    private void addDetailedProgramStats(Program program, Map<String, Object> metadata) {
+        // Enhance function statistics - use fast total count only
+        Map<String, Object> functionStats = (Map<String, Object>) metadata.get("functions");
+        FunctionManager functionManager = program.getFunctionManager();
+
+        // Only include the total count here, detailed counts should be fetched separately
+        functionStats.put("note", "For detailed function statistics, use the /programInfo/functionStats endpoint");
+
+        // Enhance symbol statistics
+        Map<String, Object> symbolStats = (Map<String, Object>) metadata.get("symbols");
+        SymbolTable symbolTable = program.getSymbolTable();
+        // Only include total counts in the basic metadata
+        symbolStats.put("note", "For detailed symbol statistics, use the /programInfo/symbolStats endpoint");
+
+        // Add placeholder for data types
+        Map<String, Object> dataTypeStats = new HashMap<>();
+        dataTypeStats.put("note", "For detailed data type statistics, use the /programInfo/dataTypeStats endpoint");
+        metadata.put("dataTypes", dataTypeStats);
+    }
+
+    /**
+     * Get symbol statistics with time-bounded processing and continuation support
+     *
+     * @param continuationToken Token from a previous request to resume processing
+     * @param limit Maximum number of symbols to process in this request
+     * @param symbolType Optional filter for a specific symbol type
+     * @return Response with symbol statistics and continuation info
+     */
+    private Map<String, Object> getSymbolStats(String continuationToken, int limit, String symbolType) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+
+        SymbolTable symbolTable = program.getSymbolTable();
+        Map<String, Object> stats = new HashMap<>();
+        List<Map<String, Object>> items = new ArrayList<>();
+
+        // Always include total count (fast operation)
+        stats.put("totalCount", symbolTable.getNumSymbols());
+
+        // Parse continuation token to get starting position
+        int startPosition = 0;
+        if (continuationToken != null && !continuationToken.isEmpty()) {
+            try {
+                startPosition = Integer.parseInt(continuationToken);
+            } catch (NumberFormatException e) {
+                Msg.warn(this, "Invalid continuation token: " + continuationToken);
+            }
+        }
+
+        // Track counts per type
+        Map<String, Integer> typeCountMap = new HashMap<>();
+
+        // Get symbol iterator
+        SymbolIterator it = symbolTable.getAllSymbols(true);
+
+        // Skip to starting position
+        int currentPosition = 0;
+        while (it.hasNext() && currentPosition < startPosition) {
+            it.next();
+            currentPosition++;
+        }
+
+        // Process symbols with time and count limits
+        int processed = 0;
+        long startTime = System.currentTimeMillis();
+        final long MAX_PROCESSING_TIME = 25000; // 25 seconds
+
+        while (it.hasNext() && processed < limit) {
+            // Check time constraint
+            if (System.currentTimeMillis() - startTime > MAX_PROCESSING_TIME) {
+                break;
+            }
+
+            Symbol symbol = it.next();
+            currentPosition++;
+
+            // Update type count
+            String typeName = symbol.getSymbolType().toString();
+            typeCountMap.put(typeName, typeCountMap.getOrDefault(typeName, 0) + 1);
+
+            // If filtering by type, only add matching symbols to the items list
+            if (symbolType == null || symbolType.equalsIgnoreCase(typeName)) {
+                if (items.size() < 100) { // Limit detailed items to first 100 matching
+                    Map<String, Object> symbolData = new HashMap<>();
+                    symbolData.put("name", symbol.getName());
+                    symbolData.put("address", symbol.getAddress().toString());
+                    symbolData.put("type", typeName);
+                    symbolData.put("namespace", symbol.getParentNamespace().getName());
+                    items.add(symbolData);
+                }
+            }
+
+            processed++;
+        }
+
+        // Determine if there's more data
+        boolean isComplete = !it.hasNext();
+
+        // Add all type counts to stats
+        for (Map.Entry<String, Integer> entry : typeCountMap.entrySet()) {
+            stats.put(entry.getKey() + "Count", entry.getValue());
+        }
+
         return Map.of(
             "success", true,
-            "programInfo", metadata
+            "symbolStats", stats,
+            "items", items.size() > 0 ? items : Collections.emptyList(),
+            "processedCount", processed,
+            "isComplete", isComplete,
+            "continuationToken", isComplete ? "" : String.valueOf(currentPosition)
+        );
+    }
+
+    /**
+     * Get data type statistics with time-bounded processing and continuation support
+     *
+     * @param continuationToken Token from a previous request to resume processing
+     * @param limit Maximum number of data types to process in this request
+     * @return Response with data type statistics and continuation info
+     */
+    private Map<String, Object> getDataTypeStats(String continuationToken, int limit) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+
+        Map<String, Object> stats = new HashMap<>();
+        List<Map<String, Object>> items = new ArrayList<>();
+
+        // Track counts
+        int builtInCount = 0;
+        int userDefinedCount = 0;
+        int currentPosition = 0;
+
+        // Parse continuation token
+        if (continuationToken != null && !continuationToken.isEmpty()) {
+            String[] parts = continuationToken.split(":");
+            if (parts.length == 3) {
+                try {
+                    builtInCount = Integer.parseInt(parts[0]);
+                    userDefinedCount = Integer.parseInt(parts[1]);
+                    currentPosition = Integer.parseInt(parts[2]);
+                } catch (NumberFormatException e) {
+                    Msg.warn(this, "Invalid continuation token: " + continuationToken);
+                }
+            }
+        }
+
+        // Get data type iterator
+        Iterator<ghidra.program.model.data.DataType> dtIterator = program.getDataTypeManager().getAllDataTypes();
+
+        // Skip to current position
+        int skipped = 0;
+        while (dtIterator.hasNext() && skipped < currentPosition) {
+            dtIterator.next();
+            skipped++;
+        }
+
+        // Process data types with time and count limits
+        int processed = 0;
+        long startTime = System.currentTimeMillis();
+        final long MAX_PROCESSING_TIME = 25000; // 25 seconds
+
+        while (dtIterator.hasNext() && processed < limit) {
+            // Check time constraint
+            if (System.currentTimeMillis() - startTime > MAX_PROCESSING_TIME) {
+                break;
+            }
+
+            ghidra.program.model.data.DataType dt = dtIterator.next();
+            currentPosition++;
+
+            // Update counts
+            if (dt.getSourceArchive().getArchiveType() == ghidra.program.model.data.ArchiveType.BUILT_IN) {
+                builtInCount++;
+            } else {
+                userDefinedCount++;
+
+                // Add details for user-defined data types only (to keep response size manageable)
+                if (items.size() < 100) { // Limit to first 100
+                    Map<String, Object> dtData = new HashMap<>();
+                    dtData.put("name", dt.getName());
+                    dtData.put("category", dt.getCategoryPath().getPath());
+                    dtData.put("size", dt.getLength());
+                    items.add(dtData);
+                }
+            }
+
+            processed++;
+        }
+
+        // Determine if there's more data
+        boolean isComplete = !dtIterator.hasNext();
+
+        // Build stats
+        stats.put("builtInCount", builtInCount);
+        stats.put("userDefinedCount", userDefinedCount);
+        stats.put("totalCount", builtInCount + userDefinedCount);
+
+        return Map.of(
+            "success", true,
+            "dataTypeStats", stats,
+            "items", !items.isEmpty() ? items : Collections.emptyList(),
+            "processedCount", processed,
+            "isComplete", isComplete,
+            "continuationToken", isComplete ? "" : builtInCount + ":" + userDefinedCount + ":" + currentPosition
         );
     }
 
@@ -1161,7 +1471,7 @@ public class GhidraMCPPlugin extends Plugin {
     /**
      * Parse query parameters from the URL, e.g. ?offset=10&limit=100
      */
-    private Map<String, String> parseQueryParams(HttpExchange exchange) {
+    public Map<String, String> parseQueryParams(HttpExchange exchange) {
         Map<String, String> result = new HashMap<>();
         String query = exchange.getRequestURI().getQuery(); // e.g. offset=10&limit=100
         if (query != null) {
@@ -1179,7 +1489,7 @@ public class GhidraMCPPlugin extends Plugin {
     /**
      * Parse post body form params, e.g. oldName=foo&newName=bar
      */
-    private Map<String, String> parsePostParams(HttpExchange exchange) throws IOException {
+    public Map<String, String> parsePostParams(HttpExchange exchange) throws IOException {
         byte[] body = exchange.getRequestBody().readAllBytes();
         String bodyStr = new String(body, StandardCharsets.UTF_8);
         Map<String, String> params = new HashMap<>();
@@ -1205,7 +1515,7 @@ public class GhidraMCPPlugin extends Plugin {
         List<String> sub = items.subList(start, end);
         return String.join("\n", sub);
     }
-    
+
     /**
      * Create a JSON-serialized error response
      */
@@ -1215,7 +1525,7 @@ public class GhidraMCPPlugin extends Plugin {
         response.put("error", message);
         return response;
     }
-    
+
     /**
      * Create a paginated response with metadata
      */
@@ -1259,7 +1569,7 @@ public class GhidraMCPPlugin extends Plugin {
         }
         return sb.toString();
     }
-    
+
     /**
      * Simple JSON serialization. In a real application, you'd use a proper library like Gson.
      */
@@ -1310,11 +1620,11 @@ public class GhidraMCPPlugin extends Plugin {
         if (obj instanceof Number || obj instanceof Boolean) {
             return obj.toString();
         }
-        
+
         // For any other type, convert to string
         return "\"" + escapeJsonString(obj.toString()) + "\"";
     }
-    
+
     /**
      * Escape special characters in JSON strings
      */
@@ -1322,11 +1632,11 @@ public class GhidraMCPPlugin extends Plugin {
         if (input == null) {
             return "";
         }
-        
+
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            
+
             switch (c) {
                 case '"':
                     sb.append("\\\"");
@@ -1361,7 +1671,7 @@ public class GhidraMCPPlugin extends Plugin {
                     }
             }
         }
-        
+
         return sb.toString();
     }
 
@@ -1378,11 +1688,11 @@ public class GhidraMCPPlugin extends Plugin {
             os.write(bytes);
         }
     }
-    
+
     /**
      * Send a JSON response with proper content type
      */
-    private void sendJsonResponse(HttpExchange exchange, Object data) throws IOException {
+    public void sendJsonResponse(HttpExchange exchange, Object data) throws IOException {
         String json = convertToJson(data);
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");

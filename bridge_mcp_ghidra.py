@@ -13,9 +13,9 @@ logger = logging.getLogger("GhidraMCP-Bridge")
 
 # Connection settings
 ghidra_server_url = "http://localhost:8080"
-DEFAULT_TIMEOUT = 10  # Increased timeout for large binaries
+DEFAULT_TIMEOUT = 100  # Increased timeout for large binaries
 
-mcp = FastMCP("ghidra-mcp")
+mcp = FastMCP("ghidra-mcp", request_timeout=300)  # 5 minute timeout for MCP requests
 
 def safe_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Any], List[Dict[str, Any]], List[str]]:
     """
@@ -373,30 +373,309 @@ def search_functions_by_name(query: str, offset: int = 0, limit: int = 100) -> L
         return response if isinstance(response, list) else []
         
 @mcp.tool()
-def get_program_info() -> Dict[str, Any]:
+def get_function_stats(continuation_token: str = "", limit: int = 5000) -> Dict[str, Any]:
+    """
+    Get detailed function statistics with pagination support.
+    
+    This function processes functions in chunks to avoid timeouts.
+    
+    Args:
+        continuation_token: Token from previous request to continue processing
+        limit: Maximum number of functions to process in this request
+        
+    Returns:
+        Dictionary containing function statistics, including:
+        - totalCount: Total number of functions
+        - externalCount: Number of external functions
+        - internalCount: Number of internal functions
+        - processedCount: Number of functions processed so far
+        - isComplete: Whether all functions have been processed
+        - continuationToken: Token to use for the next request if not complete
+    """
+    response = safe_get("programInfo/functionStats", {
+        "continuationToken": continuation_token,
+        "limit": limit
+    })
+    
+    if isinstance(response, dict) and response.get("success") is True:
+        return {
+            "stats": response.get("functionStats", {}),
+            "isComplete": response.get("isComplete", False),
+            "continuationToken": response.get("continuationToken", "")
+        }
+    else:
+        logger.error("Failed to get function statistics")
+        return {
+            "stats": {},
+            "isComplete": True,
+            "continuationToken": ""
+        }
+
+@mcp.tool()
+def get_symbol_stats(continuation_token: str = "", limit: int = 5000, symbol_type: str = None) -> Dict[str, Any]:
+    """
+    Get detailed symbol statistics with pagination support.
+    
+    This function processes symbols in chunks to avoid timeouts.
+    
+    Args:
+        continuation_token: Token from previous request to continue processing
+        limit: Maximum number of symbols to process in this request
+        symbol_type: Optional filter for a specific symbol type
+        
+    Returns:
+        Dictionary containing symbol statistics, including:
+        - totalCount: Total number of symbols
+        - <type>Count: Count for each symbol type
+        - items: List of sample symbols (limited to 100)
+        - isComplete: Whether all symbols have been processed
+        - continuationToken: Token to use for the next request if not complete
+    """
+    params = {
+        "continuationToken": continuation_token,
+        "limit": limit
+    }
+    
+    if symbol_type:
+        params["symbolType"] = symbol_type
+        
+    response = safe_get("programInfo/symbolStats", params)
+    
+    if isinstance(response, dict) and response.get("success") is True:
+        return {
+            "stats": response.get("symbolStats", {}),
+            "items": response.get("items", []),
+            "isComplete": response.get("isComplete", False),
+            "continuationToken": response.get("continuationToken", "")
+        }
+    else:
+        logger.error("Failed to get symbol statistics")
+        return {
+            "stats": {},
+            "items": [],
+            "isComplete": True,
+            "continuationToken": ""
+        }
+
+@mcp.tool()
+def get_data_type_stats(continuation_token: str = "", limit: int = 5000) -> Dict[str, Any]:
+    """
+    Get detailed data type statistics with pagination support.
+    
+    This function processes data types in chunks to avoid timeouts.
+    
+    Args:
+        continuation_token: Token from previous request to continue processing
+        limit: Maximum number of data types to process in this request
+        
+    Returns:
+        Dictionary containing data type statistics, including:
+        - totalCount: Total number of data types
+        - builtInCount: Number of built-in data types
+        - userDefinedCount: Number of user-defined data types
+        - items: List of sample data types (limited to 100)
+        - isComplete: Whether all data types have been processed
+        - continuationToken: Token to use for the next request if not complete
+    """
+    response = safe_get("programInfo/dataTypeStats", {
+        "continuationToken": continuation_token,
+        "limit": limit
+    })
+    
+    if isinstance(response, dict) and response.get("success") is True:
+        return {
+            "stats": response.get("dataTypeStats", {}),
+            "items": response.get("items", []),
+            "isComplete": response.get("isComplete", False),
+            "continuationToken": response.get("continuationToken", "")
+        }
+    else:
+        logger.error("Failed to get data type statistics")
+        return {
+            "stats": {},
+            "items": [],
+            "isComplete": True,
+            "continuationToken": ""
+        }
+
+@mcp.tool()
+def get_complete_function_stats() -> Dict[str, Any]:
+    """
+    Get complete function statistics, handling pagination automatically.
+    
+    This may make multiple requests to gather all data.
+    
+    Returns:
+        Complete function statistics
+    """
+    all_stats = None
+    continuation_token = ""
+    
+    while True:
+        # Make request with continuation token if we have one
+        response = get_function_stats(continuation_token, 5000)
+        
+        if not all_stats:
+            all_stats = response.get("stats", {})
+        else:
+            # Update counts from this batch
+            current_stats = response.get("stats", {})
+            all_stats["externalCount"] = current_stats.get("externalCount", 0)
+            all_stats["internalCount"] = current_stats.get("internalCount", 0)
+            all_stats["processedCount"] = current_stats.get("processedCount", 0)
+        
+        # Check if we're done
+        if response.get("isComplete", False):
+            break
+            
+        # Update continuation token for next batch
+        continuation_token = response.get("continuationToken", "")
+        if not continuation_token:
+            break
+    
+    return all_stats
+
+@mcp.tool()
+def get_complete_symbol_stats(symbol_type: str = None) -> Dict[str, Any]:
+    """
+    Get complete symbol statistics, handling pagination automatically.
+    
+    Args:
+        symbol_type: Optional filter for a specific symbol type
+        
+    Returns:
+        Complete symbol statistics
+    """
+    all_stats = None
+    all_items = []
+    continuation_token = ""
+    
+    while True:
+        # Make request with continuation token if we have one
+        response = get_symbol_stats(continuation_token, 5000, symbol_type)
+        
+        if not all_stats:
+            all_stats = response.get("stats", {})
+        else:
+            # Update counts from this batch
+            current_stats = response.get("stats", {})
+            for key, value in current_stats.items():
+                if key.endswith("Count"):
+                    all_stats[key] = value
+        
+        # Add items (up to a reasonable limit)
+        if len(all_items) < 500:
+            items = response.get("items", [])
+            all_items.extend(items[:min(len(items), 500 - len(all_items))])
+        
+        # Check if we're done
+        if response.get("isComplete", False):
+            break
+            
+        # Update continuation token for next batch
+        continuation_token = response.get("continuationToken", "")
+        if not continuation_token:
+            break
+    
+    return {
+        "stats": all_stats,
+        "items": all_items
+    }
+
+@mcp.tool()
+def get_program_info(detail_level: str = "basic") -> Dict[str, Any]:
     """
     Get detailed metadata about the currently loaded program.
     
+    Args:
+        detail_level: Level of detail ("basic" or "full")
+                      - "basic": Fast, returns only essential program information
+                      - "full": Comprehensive but potentially slower for large binaries
+    
     Returns:
-        A dictionary containing comprehensive program information including:
+        A dictionary containing program information including:
         - Basic program details (name, path, creation date)
         - Language and compiler specifications
         - Memory statistics (size, block count)
-        - Function statistics (total, external, internal counts)
-        - Symbol statistics (total, external, label counts)
-        - Data type statistics
-        - Processor architecture information
+        
+        When detail_level is "full", also includes enhanced statistics by fetching
+        from specialized endpoints.
     """
-    response = safe_get("programInfo")
+    # Convert detail_level to the parameter expected by the server
+    detail_param = "full" if detail_level.lower() == "full" else "basic"
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("programInfo", {})
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error getting program info: {response.get('error')}")
+    # Use a shorter timeout for the basic programInfo endpoint (should be fast now)
+    timeout = 60
+    
+    # Custom request for programInfo
+    url = f"{ghidra_server_url}/programInfo"
+    try:
+        logger.debug(f"GET request to {url} with params {{'detail': {detail_param}}}")
+        response = requests.get(url, params={"detail": detail_param}, timeout=timeout)
+        response.encoding = 'utf-8'
+        
+        if response.ok:
+            try:
+                # Try to parse as JSON
+                response = response.json()
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse programInfo response as JSON")
+                return {}
+        else:
+            error_msg = f"Error {response.status_code}: {response.text.strip()}"
+            logger.error(error_msg)
+            return {}
+            
+    except requests.exceptions.Timeout:
+        error_msg = f"Request to {url} timed out after {timeout}s"
+        logger.error(error_msg)
         return {}
-    else:
+    except requests.exceptions.ConnectionError:
+        error_msg = f"Connection error to {url}. Is Ghidra running?"
+        logger.error(error_msg)
+        return {}
+    except Exception as e:
+        error_msg = f"Request failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return {}
+    
+    if not isinstance(response, dict) or not response.get("success", False):
         logger.warning(f"Unexpected response format from programInfo endpoint")
         return {}
+        
+    basic_info = response.get("programInfo", {})
+    
+    # If basic info requested, return as is
+    if detail_level.lower() != "full":
+        return basic_info
+        
+    # For full detail, fetch additional specialized data if needed
+    try:
+        # Get function stats
+        function_stats = get_function_stats(limit=1000)
+        if function_stats.get("stats"):
+            # Update the function stats in the result
+            if "functions" in basic_info:
+                basic_info["functions"].update(function_stats.get("stats", {}))
+                # Add flag to indicate if complete
+                basic_info["functions"]["isComplete"] = function_stats.get("isComplete", False)
+                if not function_stats.get("isComplete", False):
+                    basic_info["functions"]["continuationToken"] = function_stats.get("continuationToken", "")
+        
+        # We don't automatically fetch all data for large binaries to avoid timeouts
+        # Just note the availability of continued fetching
+        if "symbols" in basic_info and basic_info["symbols"].get("totalCount", 0) > 0:
+            basic_info["symbols"]["note"] = "Use get_symbol_stats() to fetch detailed symbol statistics"
+            
+        if "dataTypes" in basic_info:
+            basic_info["dataTypes"]["note"] = "Use get_data_type_stats() to fetch detailed data type statistics"
+            
+        return basic_info
+            
+    except Exception as e:
+        logger.error(f"Error fetching additional program info: {str(e)}")
+        # Return what we have so far
+        return basic_info
         
 @mcp.tool()
 def get_references(address: str) -> Dict[str, Any]:
