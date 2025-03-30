@@ -46,8 +46,8 @@ This checklist outlines the planned enhancements to the Ghidra Model Context Pro
 - [x] Implement memory tracking (read/write)
 - [x] Add stack tracking capability with stack growth direction support
 - [x] Support memory importing back to Ghidra program
-- [ ] Implement stdout/stderr capture for emulated program
-- [ ] Add stdin input capability for emulated program
+- [x] Implement stdout/stderr capture for emulated program
+- [x] Add stdin input capability for emulated program
 - [ ] Implement register history tracking
 - [ ] Support for multi-threaded program emulation
 - [ ] Implement system call emulation framework

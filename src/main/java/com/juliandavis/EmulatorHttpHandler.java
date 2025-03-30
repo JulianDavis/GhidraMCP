@@ -224,6 +224,26 @@ public class EmulatorHttpHandler {
             plugin.sendJsonResponse(exchange, response);
         });
         
+        // Get stdout content
+        plugin.getServer().createContext("/emulator/getStdout", exchange -> {
+            Map<String, Object> response = getStdoutContent();
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
+        // Get stderr content
+        plugin.getServer().createContext("/emulator/getStderr", exchange -> {
+            Map<String, Object> response = getStderrContent();
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
+        // Provide stdin data
+        plugin.getServer().createContext("/emulator/provideStdin", exchange -> {
+            Map<String, String> params = plugin.parsePostParams(exchange);
+            String data = params.get("data");
+            Map<String, Object> response = provideStdinData(data);
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
         // Dispose emulator session
         plugin.getServer().createContext("/emulator/dispose", exchange -> {
             Map<String, Object> response = disposeEmulatorSession();
@@ -706,6 +726,31 @@ public class EmulatorHttpHandler {
     /**
      * Dispose of the current emulator session
      */
+    private Map<String, Object> disposeEmulatorSession() {
+        Program program = plugin.getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        String sessionId = programEmulatorSessions.get(program);
+        if (sessionId == null) {
+            return createErrorResponse("No emulator session for current program");
+        }
+        
+        boolean disposed = EmulatorService.disposeSession(sessionId);
+        if (disposed) {
+            programEmulatorSessions.remove(program);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", disposed);
+        result.put("message", disposed ? 
+            "Emulator session disposed successfully" : 
+            "Failed to dispose emulator session");
+        
+        return result;
+    }
+    
     /**
      * Get architecture-specific information for the current program.
      * This information includes processor name, endianness, and stack growth direction.
@@ -760,30 +805,54 @@ public class EmulatorHttpHandler {
     }
     
     /**
-     * Dispose of the current emulator session
+     * Get the current stdout content
      */
-    private Map<String, Object> disposeEmulatorSession() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("No emulator session for current program");
-        }
-        
-        boolean disposed = EmulatorService.disposeSession(sessionId);
-        if (disposed) {
-            programEmulatorSessions.remove(program);
+    private Map<String, Object> getStdoutContent() {
+        EmulatorService.EmulatorSession session = getValidatedSession();
+        if (session == null) {
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         Map<String, Object> result = new HashMap<>();
-        result.put("success", disposed);
-        result.put("message", disposed ? 
-            "Emulator session disposed successfully" : 
-            "Failed to dispose emulator session");
+        result.put("success", true);
+        result.put("stdoutContent", session.getStdoutContent());
+        return result;
+    }
+    
+    /**
+     * Get the current stderr content
+     */
+    private Map<String, Object> getStderrContent() {
+        EmulatorService.EmulatorSession session = getValidatedSession();
+        if (session == null) {
+            return createErrorResponse("No valid emulator session for current program");
+        }
         
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("stderrContent", session.getStderrContent());
+        return result;
+    }
+    
+    /**
+     * Provide data to stdin
+     */
+    private Map<String, Object> provideStdinData(String data) {
+        EmulatorService.EmulatorSession session = getValidatedSession();
+        if (session == null) {
+            return createErrorResponse("No valid emulator session for current program");
+        }
+        
+        if (data == null) {
+            data = "";
+        }
+        
+        session.provideStdinData(data);
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("message", "Input data provided to stdin");
+        result.put("dataLength", data.length());
         return result;
     }
 }

@@ -43,6 +43,9 @@ public class EmulatorService {
         private final Map<Address, Byte> memoryReads;
         private final Map<String, Long> registerWrites;
         private final List<Map<String, Object>> stackTrace;
+        private final StringBuilder stdoutBuffer;
+        private final StringBuilder stderrBuffer;
+        private final StringBuilder stdinBuffer;
         private Address startAddress;
         private Address currentAddress;
         private boolean running;
@@ -60,6 +63,9 @@ public class EmulatorService {
             this.memoryReads = new HashMap<>();
             this.registerWrites = new HashMap<>();
             this.stackTrace = new ArrayList<>();
+            this.stdoutBuffer = new StringBuilder();
+            this.stderrBuffer = new StringBuilder();
+            this.stdinBuffer = new StringBuilder();
             this.running = false;
             this.trackMemoryReads = false;
             this.trackStackChanges = false;
@@ -210,6 +216,80 @@ public class EmulatorService {
             memoryReads.clear();
             registerWrites.clear();
             stackTrace.clear();
+            stdoutBuffer.setLength(0);
+            stderrBuffer.setLength(0);
+            stdinBuffer.setLength(0);
+        }
+        
+        /**
+         * Gets the current content of the stdout buffer
+         * 
+         * @return The captured stdout content
+         */
+        public String getStdoutContent() {
+            return stdoutBuffer.toString();
+        }
+        
+        /**
+         * Gets the current content of the stderr buffer
+         * 
+         * @return The captured stderr content
+         */
+        public String getStderrContent() {
+            return stderrBuffer.toString();
+        }
+        
+        /**
+         * Gets the current content of the stdin buffer
+         * 
+         * @return The current stdin content
+         */
+        public String getStdinContent() {
+            return stdinBuffer.toString();
+        }
+        
+        /**
+         * Appends data to the stdout buffer
+         * 
+         * @param data The data to append to stdout
+         */
+        public void appendStdout(String data) {
+            stdoutBuffer.append(data);
+        }
+        
+        /**
+         * Appends data to the stderr buffer
+         * 
+         * @param data The data to append to stderr
+         */
+        public void appendStderr(String data) {
+            stderrBuffer.append(data);
+        }
+        
+        /**
+         * Provides input data to the stdin buffer
+         * 
+         * @param data The data to add to stdin
+         */
+        public void provideStdinData(String data) {
+            stdinBuffer.append(data);
+        }
+        
+        /**
+         * Reads characters from the stdin buffer up to maxChars
+         * 
+         * @param maxChars Maximum number of characters to read
+         * @return The read characters
+         */
+        public String readStdin(int maxChars) {
+            if (stdinBuffer.length() == 0) {
+                return "";
+            }
+            
+            int charsToRead = Math.min(maxChars, stdinBuffer.length());
+            String result = stdinBuffer.substring(0, charsToRead);
+            stdinBuffer.delete(0, charsToRead);
+            return result;
         }
         
         /**
@@ -320,6 +400,10 @@ public class EmulatorService {
                     }
                 }
             });
+            
+            // Register the stdio emulation helper
+            StdioEmulationHelper stdioHelper = new StdioEmulationHelper(session);
+            stdioHelper.register();
 
             // Initialize registers to reasonable defaults
             // Set default register values using writeRegister
@@ -750,19 +834,17 @@ public class EmulatorService {
             for (Map.Entry<Address, byte[]> entry : contiguousWrites.entrySet()) {
                 Map<String, Object> writeInfo = getStringObjectMap(entry);
                 
-                // Add interpretations for multi-byte writes
+                // Add interpretations for multibyte writes
                 byte[] bytes = entry.getValue();
                 if (bytes.length >= 2) {
                     Map<String, Object> interpretations = new HashMap<>();
                     
                     // Add 16-bit interpretation if we have at least 2 bytes
-                    if (bytes.length >= 2) {
-                        short value16 = getShortValue(bytes, 0, isBigEndian);
-                        interpretations.put("int16", (int)value16);
-                        interpretations.put("uint16", value16 & 0xFFFF);
-                        interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
-                    }
-                    
+                    short value16 = getShortValue(bytes, 0, isBigEndian);
+                    interpretations.put("int16", (int)value16);
+                    interpretations.put("uint16", value16 & 0xFFFF);
+                    interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
+
                     // Add 32-bit interpretation if we have at least 4 bytes
                     if (bytes.length >= 4) {
                         int value32 = getIntValue(bytes, 0, isBigEndian);
@@ -1524,18 +1606,16 @@ public class EmulatorService {
             result.put("asciiValue", asciiString.toString());
             result.put("isBigEndian", isBigEndian);
             
-            // If we have enough bytes, provide multi-byte interpretations
+            // If we have enough bytes, provide multibyte interpretations
             if (length >= 2) {
                 Map<String, Object> interpretations = new HashMap<>();
                 
                 // Provide 16-bit interpretation if we have at least 2 bytes
-                if (length >= 2) {
-                    short value16 = getShortValue(bytes, 0, isBigEndian);
-                    interpretations.put("int16", (int)value16);
-                    interpretations.put("uint16", value16 & 0xFFFF);
-                    interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
-                }
-                
+                short value16 = getShortValue(bytes, 0, isBigEndian);
+                interpretations.put("int16", (int)value16);
+                interpretations.put("uint16", value16 & 0xFFFF);
+                interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
+
                 // Provide 32-bit interpretation if we have at least 4 bytes
                 if (length >= 4) {
                     int value32 = getIntValue(bytes, 0, isBigEndian);
@@ -1567,7 +1647,7 @@ public class EmulatorService {
     
     /**
      * Helper method to extract a short (16-bit) value from a byte array with endian awareness
-     * 
+     *
      * @param bytes The byte array
      * @param offset The offset into the array
      * @param isBigEndian Whether to use big-endian byte ordering
@@ -1814,19 +1894,17 @@ public class EmulatorService {
             for (Map.Entry<Address, byte[]> entry : contiguousReads.entrySet()) {
                 Map<String, Object> readInfo = getStringObjectMap(entry);
                 
-                // Add interpretations for multi-byte reads
+                // Add interpretations for multibyte reads
                 byte[] bytes = entry.getValue();
                 if (bytes.length >= 2) {
                     Map<String, Object> interpretations = new HashMap<>();
                     
                     // Add 16-bit interpretation if we have at least 2 bytes
-                    if (bytes.length >= 2) {
-                        short value16 = getShortValue(bytes, 0, isBigEndian);
-                        interpretations.put("int16", (int)value16);
-                        interpretations.put("uint16", value16 & 0xFFFF);
-                        interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
-                    }
-                    
+                    short value16 = getShortValue(bytes, 0, isBigEndian);
+                    interpretations.put("int16", (int)value16);
+                    interpretations.put("uint16", value16 & 0xFFFF);
+                    interpretations.put("hex16", String.format("0x%04x", value16 & 0xFFFF));
+
                     // Add 32-bit interpretation if we have at least 4 bytes
                     if (bytes.length >= 4) {
                         int value32 = getIntValue(bytes, 0, isBigEndian);
