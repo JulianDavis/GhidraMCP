@@ -3,6 +3,7 @@ import requests
 import json
 import logging
 from typing import Dict, List, Union, Any, Optional
+from result_objects import *
 
 # Configure logging
 logging.basicConfig(
@@ -22,7 +23,7 @@ mcp = FastMCP("ghidra-mcp", request_timeout=300)  # 5 minute timeout for MCP req
 # ----------------------------------------------------------------------------------
 
 @mcp.tool()
-def emulator_initialize(address: str, write_tracking: bool = True) -> Dict[str, Any]:
+def emulator_initialize(address: str, write_tracking: bool = True) -> Union[EmulatorSession, ErrorResult]:
     """
     Initialize an emulator session at the specified address.
     
@@ -31,46 +32,50 @@ def emulator_initialize(address: str, write_tracking: bool = True) -> Dict[str, 
         write_tracking: Whether to enable memory write tracking
         
     Returns:
-        Dictionary containing session ID and status information
+        EmulatorSession object on success, ErrorResult on failure
     """
     response = safe_post("emulator/initialize", {
         "address": address,
         "writeTracking": str(write_tracking).lower()
     })
     
-    if isinstance(response, dict):
-        return response
+    if response.get("success", False):
+        # If this is a text response, convert it to a session object
+        if response.get("type") == "text_response":
+            # This would be unusual, but handle it just in case
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('text', '')}"
+            )
+        # Otherwise, create a proper EmulatorSession object
+        return EmulatorSession.from_dict(response)
     else:
-        # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
-def emulator_step() -> Dict[str, Any]:
+def emulator_step() -> Union[StepResult, ErrorResult]:
     """
     Step the emulator forward by one instruction.
     
     Returns:
-        Dictionary containing the result of the step operation, including:
-        - previousPC: The program counter value before stepping
-        - newPC: The program counter value after stepping
-        - instruction: The executed instruction (if available)
+        StepResult containing details about the step operation, or ErrorResult on failure
     """
     response = safe_get("emulator/step")
     
-    if isinstance(response, dict):
-        return response
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('raw_text', '')}"
+            )
+        # Otherwise, create a proper StepResult object
+        return StepResult.from_dict(response)
     else:
-        # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
-def emulator_run(max_steps: int = 1000, stop_on_breakpoint: bool = True, stop_address: str = None) -> Dict[str, Any]:
+def emulator_run(max_steps: int = 1000, stop_on_breakpoint: bool = True, stop_address: str = None) -> Union[RunResult, ErrorResult]:
     """
     Run the emulator until a condition is met.
     
@@ -80,11 +85,7 @@ def emulator_run(max_steps: int = 1000, stop_on_breakpoint: bool = True, stop_ad
         stop_address: Optional specific address to stop at (e.g., "0x1400")
         
     Returns:
-        Dictionary containing the result of the run operation, including:
-        - stepsExecuted: Number of steps executed
-        - currentPC: Final program counter value
-        - stoppedReason: Why execution stopped (maxStepsReached, breakpoint, targetAddress)
-        - executedInstructions: List of instructions that were executed
+        RunResult object with execution details, or ErrorResult on failure
     """
     params = {
         "maxSteps": str(max_steps),
@@ -96,58 +97,61 @@ def emulator_run(max_steps: int = 1000, stop_on_breakpoint: bool = True, stop_ad
     
     response = safe_post("emulator/run", params)
     
-    if isinstance(response, dict):
-        return response
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('text', '')}"
+            )
+        # Otherwise, create a proper RunResult object
+        return RunResult.from_dict(response)
     else:
-        # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
-def emulator_get_state() -> Dict[str, Any]:
+def emulator_get_state() -> Union[EmulatorState, ErrorResult]:
     """
     Get the current state of the emulator.
     
     Returns:
-        Dictionary containing the current emulator state, including:
-        - registers: Dictionary of register values
-        - programCounter: Current program counter value
-        - memory: Dictionary of modified memory locations
-        - status: Current status ("running" or "stopped")
+        EmulatorState object containing the current emulator state, or ErrorResult on failure
     """
     response = safe_get("emulator/getState")
     
-    if isinstance(response, dict):
-        return response
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('raw_text', '')}"
+            )
+        # Otherwise, create a proper EmulatorState object
+        return EmulatorState.from_dict(response)
     else:
-        # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
-def emulator_get_writes() -> Dict[str, Any]:
+def emulator_get_writes() -> Union[MemoryWritesResult, ErrorResult]:
     """
     Get a list of memory locations that were written during emulation.
     
     Returns:
-        Dictionary containing information about memory writes, including:
-        - writes: List of write objects with address, length, hexValue, and asciiValue
-        - count: Number of write objects
+        MemoryWritesResult object containing memory write information, or ErrorResult on failure
     """
     response = safe_get("emulator/getWrites")
     
-    if isinstance(response, dict):
-        return response
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('raw_text', '')}"
+            )
+        # Otherwise, create a proper MemoryWritesResult object
+        return MemoryWritesResult.from_dict(response)
     else:
-        # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_reset() -> Dict[str, Any]:
@@ -165,10 +169,7 @@ def emulator_reset() -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_set_breakpoint(address: str) -> Dict[str, Any]:
@@ -189,10 +190,7 @@ def emulator_set_breakpoint(address: str) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_clear_breakpoint(address: str) -> Dict[str, Any]:
@@ -213,31 +211,29 @@ def emulator_clear_breakpoint(address: str) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
-def emulator_get_breakpoints() -> Dict[str, Any]:
+def emulator_get_breakpoints() -> Union[BreakpointsResult, ErrorResult]:
     """
     Get a list of all active breakpoints.
     
     Returns:
-        Dictionary containing information about breakpoints, including:
-        - breakpoints: List of breakpoint addresses
-        - count: Number of breakpoints
+        BreakpointsResult object containing breakpoint information, or ErrorResult on failure
     """
     response = safe_get("emulator/getBreakpoints")
     
-    if isinstance(response, dict):
-        return response
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('raw_text', '')}"
+            )
+        # Otherwise, create a proper BreakpointsResult object
+        return BreakpointsResult.from_dict(response)
     else:
-        # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_set_register(register: str, value: str) -> Dict[str, Any]:
@@ -263,10 +259,7 @@ def emulator_set_register(register: str, value: str) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_get_register(register: str) -> Dict[str, Any]:
@@ -288,10 +281,7 @@ def emulator_get_register(register: str) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_get_registers() -> Dict[str, Any]:
@@ -309,10 +299,7 @@ def emulator_get_registers() -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_read_memory(address: str, length: int = 16) -> Dict[str, Any]:
@@ -339,10 +326,7 @@ def emulator_read_memory(address: str, length: int = 16) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_write_memory(address: str, bytes_hex: str) -> Dict[str, Any]:
@@ -367,10 +351,7 @@ def emulator_write_memory(address: str, bytes_hex: str) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_set_memory_read_tracking(enable: bool = True) -> Dict[str, Any]:
@@ -393,10 +374,7 @@ def emulator_set_memory_read_tracking(enable: bool = True) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_get_reads() -> Dict[str, Any]:
@@ -414,10 +392,7 @@ def emulator_get_reads() -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_set_stack_change_tracking(enable: bool = True) -> Dict[str, Any]:
@@ -440,10 +415,7 @@ def emulator_set_stack_change_tracking(enable: bool = True) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_get_stack_trace() -> Dict[str, Any]:
@@ -461,10 +433,7 @@ def emulator_get_stack_trace() -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_set_conditional_breakpoint(address: str, condition: str) -> Dict[str, Any]:
@@ -490,31 +459,29 @@ def emulator_set_conditional_breakpoint(address: str, condition: str) -> Dict[st
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
-def emulator_get_conditional_breakpoints() -> Dict[str, Any]:
+def emulator_get_conditional_breakpoints() -> Union[ConditionalBreakpointsResult, ErrorResult]:
     """
     Get a list of all conditional breakpoints.
     
     Returns:
-        Dictionary containing information about conditional breakpoints, including:
-        - breakpoints: List of breakpoint objects with address and condition
-        - count: Number of conditional breakpoints
+        ConditionalBreakpointsResult object containing breakpoint information, or ErrorResult on failure
     """
     response = safe_get("emulator/getConditionalBreakpoints")
     
-    if isinstance(response, dict):
-        return response
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('raw_text', '')}"
+            )
+        # Otherwise, create a proper ConditionalBreakpointsResult object
+        return ConditionalBreakpointsResult.from_dict(response)
     else:
-        # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_import_memory(from_address: str, length: str) -> Dict[str, Any]:
@@ -540,10 +507,7 @@ def emulator_import_memory(from_address: str, length: str) -> Dict[str, Any]:
         return response
     else:
         # Convert string response to dict for consistency
-        return {
-            "success": False,
-            "error": response if isinstance(response, str) else "Unknown error"
-        }
+        return ErrorResult.from_dict(response)
 
 def safe_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Any], List[Dict[str, Any]], List[str]]:
     """
@@ -573,26 +537,50 @@ def safe_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Di
             except json.JSONDecodeError:
                 # Fall back to text response if not JSON
                 logger.debug(f"Response is not JSON, returning as text lines")
-                return response.text.splitlines()
+                # Convert plain text into a structured response
+                text_lines = response.text.splitlines()
+                return {
+                    "success": True,
+                    "type": "text_response",
+                    "lines": text_lines,
+                    "raw_text": response.text
+                }
         else:
             error_msg = f"Error {response.status_code}: {response.text.strip()}"
             logger.error(error_msg)
-            return [error_msg]
+            return {
+                "success": False,
+                "error": error_msg,
+                "status_code": response.status_code
+            }
             
     except requests.exceptions.Timeout:
         error_msg = f"Request to {url} timed out after {DEFAULT_TIMEOUT}s"
         logger.error(error_msg)
-        return [error_msg]
+        return {
+            "success": False,
+            "error": error_msg,
+            "type": "timeout"
+        }
     except requests.exceptions.ConnectionError:
         error_msg = f"Connection error to {url}. Is Ghidra running?"
         logger.error(error_msg)
-        return [error_msg]
+        return {
+            "success": False,
+            "error": error_msg,
+            "type": "connection_error"
+        }
     except Exception as e:
         error_msg = f"Request failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
-        return [error_msg]
+        return {
+            "success": False,
+            "error": error_msg,
+            "type": "exception",
+            "exception": str(e)
+        }
 
-def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Union[Dict[str, Any], str]:
+def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Dict[str, Any]:
     """
     Perform a POST request and parse JSON response.
     
@@ -601,7 +589,7 @@ def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Union[Dict[str
         data: Either a dict to be sent as form data or a string to be sent as raw body
         
     Returns:
-        Parsed JSON response or error message
+        Dictionary containing the parsed JSON response or error information
     """
     url = f"{ghidra_server_url}/{endpoint}"
     
@@ -620,24 +608,46 @@ def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Union[Dict[str
                 return response.json()
             except json.JSONDecodeError:
                 # Fall back to text response if not JSON
-                return response.text.strip()
+                text_response = response.text.strip()
+                return {
+                    "success": True,
+                    "type": "text_response",
+                    "text": text_response
+                }
         else:
             error_msg = f"Error {response.status_code}: {response.text.strip()}"
             logger.error(error_msg)
-            return error_msg
+            return {
+                "success": False,
+                "error": error_msg,
+                "status_code": response.status_code
+            }
             
     except requests.exceptions.Timeout:
         error_msg = f"Request to {url} timed out after {DEFAULT_TIMEOUT}s"
         logger.error(error_msg)
-        return error_msg
+        return {
+            "success": False,
+            "error": error_msg,
+            "type": "timeout"
+        }
     except requests.exceptions.ConnectionError:
         error_msg = f"Connection error to {url}. Is Ghidra running?"
         logger.error(error_msg)
-        return error_msg
+        return {
+            "success": False,
+            "error": error_msg,
+            "type": "connection_error"
+        }
     except Exception as e:
         error_msg = f"Request failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
-        return error_msg
+        return {
+            "success": False,
+            "error": error_msg,
+            "type": "exception",
+            "exception": str(e)
+        }
 
 @mcp.tool()
 def list_methods(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -1206,7 +1216,7 @@ def get_program_info(detail_level: str = "basic") -> Dict[str, Any]:
         return basic_info
         
 @mcp.tool()
-def get_references(address: str) -> Dict[str, Any]:
+def get_references(address: str) -> Union[ReferenceResult, ErrorResult]:
     """
     Get all references to and from the specified address.
     
@@ -1217,50 +1227,28 @@ def get_references(address: str) -> Dict[str, Any]:
         address: The address to query for references (e.g., "0x1400")
         
     Returns:
-        A dictionary containing:
-        - address: The queried address
-        - referencesToHere: List of references that point to this address
-        - referencesFromHere: List of references that this address points to
-        
-    Each reference object contains information such as source/target addresses,
-    reference type, and if applicable, function context.
+        ReferenceResult object containing reference information, or ErrorResult on failure
     """
     if not address:
         logger.error("Address is required for reference lookup")
-        return {
-            "address": "",
-            "referencesToHere": [],
-            "referencesFromHere": []
-        }
+        return ErrorResult.from_string("Address is required for reference lookup")
         
     response = safe_get("xrefs", {"address": address})
     
-    if isinstance(response, dict) and response.get("success") is True:
-        # Return just the data portion, removing the success flag for cleaner API
-        result = {
-            "address": response.get("address", ""),
-            "referencesToHere": response.get("referencesToHere", []),
-            "referencesFromHere": response.get("referencesFromHere", [])
-        }
-        return result
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error getting references: {response.get('error')}")
-        return {
-            "address": address,
-            "referencesToHere": [],
-            "referencesFromHere": [],
-            "error": response.get("error")
-        }
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('raw_text', '')}"
+            )
+        # Otherwise, create a proper ReferenceResult object
+        return ReferenceResult.from_dict(response)
     else:
-        logger.warning(f"Unexpected response format from xrefs endpoint")
-        return {
-            "address": address,
-            "referencesToHere": [],
-            "referencesFromHere": []
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
         
 @mcp.tool()
-def disassemble_at_address(address: str, length: int = 10) -> Dict[str, Any]:
+def disassemble_at_address(address: str, length: int = 10) -> Union[DisassemblyResult, ErrorResult]:
     """
     Get disassembly listing at a specific address for a given number of instructions.
     
@@ -1269,56 +1257,28 @@ def disassemble_at_address(address: str, length: int = 10) -> Dict[str, Any]:
         length: Number of instructions to disassemble (default: 10)
         
     Returns:
-        A dictionary containing:
-        - address: The starting address
-        - instructions: List of instruction objects
-        - count: Number of instructions returned
-        - function: Name of the containing function (if any)
-        
-    Each instruction object contains details like address, bytes, mnemonic,
-    full representation, operands, and comments if present.
+        DisassemblyResult object containing disassembly information, or ErrorResult on failure
     """
     if not address:
         logger.error("Address is required for disassembly")
-        return {
-            "address": "",
-            "instructions": [],
-            "count": 0
-        }
+        return ErrorResult.from_string("Address is required for disassembly")
         
     response = safe_get("disassemble", {"address": address, "length": length})
     
-    if isinstance(response, dict) and response.get("success") is True:
-        # Return just the data portion, removing the success flag for cleaner API
-        result = {
-            "address": response.get("address", ""),
-            "instructions": response.get("instructions", []),
-            "count": response.get("count", 0)
-        }
-        
-        # Include function name if present
-        if "function" in response:
-            result["function"] = response["function"]
-            
-        return result
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error getting disassembly: {response.get('error')}")
-        return {
-            "address": address,
-            "instructions": [],
-            "count": 0,
-            "error": response.get("error")
-        }
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('raw_text', '')}"
+            )
+        # Otherwise, create a proper DisassemblyResult object
+        return DisassemblyResult.from_dict(response)
     else:
-        logger.warning(f"Unexpected response format from disassemble endpoint")
-        return {
-            "address": address,
-            "instructions": [],
-            "count": 0
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
         
 @mcp.tool()
-def disassemble_function(name: str) -> Dict[str, Any]:
+def disassemble_function(name: str) -> Union[FunctionDisassemblyResult, ErrorResult]:
     """
     Get complete disassembly for a function by name.
     
@@ -1326,52 +1286,26 @@ def disassemble_function(name: str) -> Dict[str, Any]:
         name: Name of the function to disassemble
         
     Returns:
-        A dictionary containing:
-        - start: Starting address of the function
-        - end: Ending address of the function
-        - instructions: List of all instructions in the function
-        - count: Number of instructions in the function
-        - function: Function name
-        - signature: Function signature
-        
-    Each instruction object contains detailed information including address,
-    bytes, mnemonic, representation, operands, and comments if present.
+        FunctionDisassemblyResult object containing function disassembly,
+        or ErrorResult on failure
     """
     if not name:
         logger.error("Function name is required")
-        return {
-            "instructions": [],
-            "count": 0,
-            "error": "Function name is required"
-        }
+        return ErrorResult.from_string("Function name is required")
         
     response = safe_post("disassembleFunction", name)
     
-    if isinstance(response, dict) and response.get("success") is True:
-        # Return just the data portion, removing the success flag for cleaner API
-        result = {
-            "start": response.get("start", ""),
-            "end": response.get("end", ""),
-            "instructions": response.get("instructions", []),
-            "count": response.get("count", 0),
-            "function": response.get("function", ""),
-            "signature": response.get("signature", "")
-        }
-        return result
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error getting function disassembly: {response.get('error')}")
-        return {
-            "instructions": [],
-            "count": 0,
-            "error": response.get("error")
-        }
+    if response.get("success", False):
+        # If this is a text response, try to parse it
+        if response.get("type") == "text_response":
+            return ErrorResult.from_string(
+                f"Unexpected text response: {response.get('text', '')}"
+            )
+        # Otherwise, create a proper FunctionDisassemblyResult object
+        return FunctionDisassemblyResult.from_dict(response)
     else:
-        logger.warning(f"Unexpected response format from disassembleFunction endpoint")
-        return {
-            "function": name,
-            "instructions": [],
-            "count": 0
-        }
+        # Return an error result
+        return ErrorResult.from_dict(response)
         
 @mcp.tool()
 def set_comment(address: str, comment: str, comment_type: int = 3) -> Dict[str, Any]:

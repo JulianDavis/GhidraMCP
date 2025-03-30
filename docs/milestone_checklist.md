@@ -45,8 +45,8 @@ This checklist outlines the planned enhancements to the Ghidra Model Context Pro
 ### Python Bridge Improvements
 
 - [x] Initial MCP bridge setup with FastMCP
-- [ ] Implement proper JSON parsing for all responses
-- [ ] Add rich result object support instead of plain text
+- [x] Implement proper JSON parsing for all responses
+- [x] Add rich result object support instead of plain text
 - [ ] Improve error handling and status reporting
 - [ ] Add connection management and timeout handling
 - [ ] Implement retry logic for failed requests

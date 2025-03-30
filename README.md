@@ -5,8 +5,8 @@
 ![ghidra_MCP_logo](https://github.com/user-attachments/assets/4986d702-be3f-4697-acce-aea55cd79ad3)
 
 
-# GhidraMCP with JSON Responses
-This is a fork of [LaurieWired's GhidraMCP](https://github.com/LaurieWired/GhidraMCP) with improved JSON responses for all endpoints. It is a Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
+# GhidraMCP with Rich Result Objects
+This is a fork of [LaurieWired's GhidraMCP](https://github.com/LaurieWired/GhidraMCP) with improved JSON responses for all endpoints and rich result objects. It is a Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
 
 https://github.com/user-attachments/assets/36080514-f227-44bd-af84-78e29ee1d7f9
 
@@ -20,6 +20,9 @@ MCP Server + Ghidra Plugin
 - **All endpoints return JSON responses with consistent structure**
 - **Pagination metadata included in all list responses**
 - **Enhanced data fields in all responses**
+- **Rich result objects with proper Python typing**
+- **Consistent error handling across all endpoints**
+- **Text responses automatically converted to structured JSON**
 
 # Installation
 
@@ -78,7 +81,7 @@ Another MCP client that supports multiple models on the backend is [5ire](https:
 3. Command: `python /ABSOLUTE_PATH_TO/bridge_mcp_ghidra.py`
 
 # JSON Response Format
-All endpoints now return JSON responses with a consistent structure:
+All endpoints now return JSON responses with a consistent structure, which are then parsed into rich result objects:
 
 ## List Endpoints
 ```json
@@ -104,7 +107,37 @@ All endpoints now return JSON responses with a consistent structure:
 ```json
 {
   "success": false,
-  "error": "Error message here"
+  "error": "Error message here",
+  "status_code": 404
+}
+```
+
+## Rich Result Objects
+The Python bridge now provides strongly-typed result objects for all endpoints:
+
+```python
+# Example of using rich result objects
+result = emulator_get_state()
+
+if isinstance(result, EmulatorState):
+    # Access properties with type hints and auto-completion
+    pc = result.programCounter
+    registers = result.registers
+    status = result.status
+elif isinstance(result, ErrorResult):
+    # Handle error
+    error_message = result.error
+```
+
+## Consistent Text Response Handling
+Non-JSON responses are automatically converted to structured data:
+
+```json
+{
+  "success": true,
+  "type": "text_response",
+  "text": "Operation completed successfully",
+  "lines": ["Operation", "completed", "successfully"]
 }
 ```
 

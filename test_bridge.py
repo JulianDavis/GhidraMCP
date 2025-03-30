@@ -1,12 +1,20 @@
 import pytest
 import json
 from unittest.mock import patch, MagicMock
+from typing import Dict, Any, List, Union
 
 # Import the bridge module - assuming it's in the same directory
 from bridge_mcp_ghidra import (
     safe_get, safe_post, 
     list_methods, list_classes, 
     get_program_info
+)
+
+# Import result object types
+from result_objects import (
+    EmulatorState, ErrorResult, StepResult, RunResult,
+    MemoryAccess, MemoryWritesResult, MemoryReadsResult,
+    DisassemblyResult, FunctionDisassemblyResult
 )
 
 # Test the safe_get function with a successful JSON response
@@ -23,9 +31,9 @@ def test_safe_get_json_success(mock_get):
     
     # Verify results
     assert isinstance(result, dict)
-    assert result["success"] is True
-    assert len(result["items"]) == 1
-    assert result["items"][0]["name"] == "test"
+    assert result.get("success") is True
+    assert len(result.get("items", [])) == 1
+    assert result.get("items", [])[0].get("name") == "test"
 
 # Test the safe_get function with a non-JSON response
 @patch('bridge_mcp_ghidra.requests.get')
@@ -41,10 +49,13 @@ def test_safe_get_text_success(mock_get):
     result = safe_get("test_endpoint")
     
     # Verify results
-    assert isinstance(result, list)
-    assert len(result) == 2
-    assert result[0] == "line1"
-    assert result[1] == "line2"
+    assert isinstance(result, dict)
+    assert result.get("success") is True
+    assert result.get("type") == "text_response"
+    assert len(result.get("lines", [])) == 2
+    assert result.get("lines", [])[0] == "line1"
+    assert result.get("lines", [])[1] == "line2"
+    assert "line1\nline2" == result.get("raw_text")
 
 # Test the safe_get function with an error response
 @patch('bridge_mcp_ghidra.requests.get')
@@ -60,9 +71,10 @@ def test_safe_get_error(mock_get):
     result = safe_get("test_endpoint")
     
     # Verify results
-    assert isinstance(result, list)
-    assert len(result) == 1
-    assert "Error 404" in result[0]
+    assert isinstance(result, dict)
+    assert result.get("success") is False
+    assert "Error 404" in result.get("error", "")
+    assert result.get("status_code") == 404
 
 # Test the list_methods function with a successful response
 @patch('bridge_mcp_ghidra.safe_get')
