@@ -17,6 +17,7 @@ import ghidra.app.services.ProgramManager;
 import ghidra.framework.plugintool.PluginInfo;
 import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.util.Msg;
+import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.ConsoleTaskMonitor;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -217,6 +218,29 @@ public class GhidraMCPPlugin extends Plugin {
             sendJsonResponse(exchange, setCommentAtAddress(address, comment, commentType));
         });
 
+        // Memory pattern search endpoint
+        server.createContext("/memory/searchPattern", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String patternHex = params.get("pattern");
+            boolean searchExecutable = Boolean.parseBoolean(params.getOrDefault("executable", "false"));
+            boolean searchReadable = Boolean.parseBoolean(params.getOrDefault("readable", "true"));
+            boolean caseSensitive = Boolean.parseBoolean(params.getOrDefault("caseSensitive", "true"));
+            int maxResults = Integer.parseInt(params.getOrDefault("maxResults", "100"));
+            
+            sendJsonResponse(exchange, searchMemoryPattern(patternHex, searchExecutable, searchReadable, caseSensitive, maxResults));
+        });
+        
+        // Memory cross-reference finder endpoint
+        server.createContext("/memory/findReferences", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
+            String targetAddress = params.get("address");
+            boolean searchExecutable = Boolean.parseBoolean(params.getOrDefault("executable", "false"));
+            boolean searchReadable = Boolean.parseBoolean(params.getOrDefault("readable", "true"));
+            int maxResults = Integer.parseInt(params.getOrDefault("maxResults", "100"));
+            
+            sendJsonResponse(exchange, findMemoryReferences(targetAddress, searchExecutable, searchReadable, maxResults));
+        });
+        
         // Initialize and register emulator endpoints
         emulatorHandler = new EmulatorHttpHandler(this);
         emulatorHandler.registerEndpoints();
@@ -816,6 +840,188 @@ public class GhidraMCPPlugin extends Plugin {
         return sb.toString();
     }
 
+    /**
+     * Find all memory locations that reference a specific address
+     * 
+     * @param targetAddressStr The target address to find references to (as a string)
+     * @param searchExecutable Whether to search only in executable memory
+     * @param searchReadable Whether to search only in readable memory
+     * @param maxResults Maximum number of results to return
+     * @return Map containing the search results
+     */
+    private Map<String, Object> findMemoryReferences(
+            String targetAddressStr,
+            boolean searchExecutable,
+            boolean searchReadable,
+            int maxResults) {
+        
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (targetAddressStr == null || targetAddressStr.isEmpty()) {
+            return createErrorResponse("Target address is required");
+        }
+        
+        try {
+            // Validate the address
+            Address targetAddress = program.getAddressFactory().getAddress(targetAddressStr);
+            if (targetAddress == null) {
+                return createErrorResponse("Invalid target address: " + targetAddressStr);
+            }
+            
+            // Get the search results
+            List<Map<String, Object>> results = MemoryCrossReferenceService.findReferences(
+                    program, 
+                    targetAddressStr, 
+                    searchExecutable, 
+                    searchReadable, 
+                    maxResults, 
+                    TaskMonitor.DUMMY);
+            
+            // Add existing references from the reference manager for completeness
+            List<Map<String, Object>> existingRefs = new ArrayList<>();
+            ReferenceIterator refIter = program.getReferenceManager().getReferencesTo(targetAddress);
+            while (refIter.hasNext()) {
+                Reference ref = refIter.next();
+                Map<String, Object> refInfo = new HashMap<>();
+                refInfo.put("referenceAddress", ref.getFromAddress().toString());
+                refInfo.put("targetAddress", ref.getToAddress().toString());
+                refInfo.put("referenceType", ref.getReferenceType().toString());
+                refInfo.put("isPrimary", ref.isPrimary());
+                refInfo.put("isExisting", true); // Mark as an existing reference
+                
+                // Skip if this reference is already in our scanned results
+                boolean duplicate = false;
+                for (Map<String, Object> result : results) {
+                    if (result.get("referenceAddress").equals(refInfo.get("referenceAddress"))) {
+                        // Update the existing entry
+                        result.put("referenceType", refInfo.get("referenceType"));
+                        result.put("isPrimary", refInfo.get("isPrimary"));
+                        result.put("isExisting", true);
+                        duplicate = true;
+                        break;
+                    }
+                }
+                
+                if (!duplicate) {
+                    existingRefs.add(refInfo);
+                }
+            }
+            
+            // Add existing references to results
+            results.addAll(existingRefs);
+            
+            // Sort results by address
+            results.sort((a, b) -> {
+                String addrA = (String) a.get("referenceAddress");
+                String addrB = (String) b.get("referenceAddress");
+                return addrA.compareTo(addrB);
+            });
+            
+            // Apply result limit if needed
+            if (maxResults > 0 && results.size() > maxResults) {
+                results = results.subList(0, maxResults);
+            }
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("targetAddress", targetAddressStr);
+            response.put("references", results);
+            response.put("count", results.size());
+            
+            if (maxResults > 0 && results.size() >= maxResults) {
+                response.put("limitReached", true);
+                response.put("message", "Maximum result limit reached. Use maxResults parameter to adjust.");
+            }
+            
+            response.put("searchCriteria", Map.of(
+                "searchExecutable", searchExecutable,
+                "searchReadable", searchReadable,
+                "maxResults", maxResults
+            ));
+            
+            return response;
+        } catch (Exception e) {
+            Msg.error(this, "Error finding memory references", e);
+            return createErrorResponse("Error finding memory references: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Search for a pattern in memory
+     * 
+     * @param patternHex The pattern to search for as a hex string
+     * @param searchExecutable Whether to search only in executable memory
+     * @param searchReadable Whether to search only in readable memory
+     * @param caseSensitive Whether the search is case sensitive
+     * @param maxResults Maximum number of results to return
+     * @return Map containing the search results
+     */
+    private Map<String, Object> searchMemoryPattern(
+            String patternHex,
+            boolean searchExecutable,
+            boolean searchReadable,
+            boolean caseSensitive,
+            int maxResults) {
+        
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (patternHex == null || patternHex.isEmpty()) {
+            return createErrorResponse("Pattern is required");
+        }
+        
+        // Remove any whitespace or "0x" prefix
+        patternHex = patternHex.trim().replaceAll("\\s", "");
+        if (patternHex.toLowerCase().startsWith("0x")) {
+            patternHex = patternHex.substring(2);
+        }
+        
+        // Validate hex string
+        if (!patternHex.matches("[0-9A-Fa-f]*")) {
+            return createErrorResponse("Invalid hex pattern: must contain only hex characters");
+        }
+        
+        try {
+            // Get the search results
+            List<Map<String, Object>> results = MemoryPatternSearchService.searchForPattern(
+                    program, 
+                    patternHex, 
+                    searchExecutable, 
+                    searchReadable, 
+                    caseSensitive, 
+                    maxResults, 
+                    TaskMonitor.DUMMY);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("pattern", patternHex);
+            response.put("matches", results);
+            response.put("count", results.size());
+            
+            if (results.size() >= maxResults) {
+                response.put("limitReached", true);
+                response.put("message", "Maximum result limit reached. Use maxResults parameter to adjust.");
+            }
+            
+            response.put("searchCriteria", Map.of(
+                "searchExecutable", searchExecutable,
+                "searchReadable", searchReadable,
+                "caseSensitive", caseSensitive,
+                "maxResults", maxResults
+            ));
+            
+            return response;
+        } catch (Exception e) {
+            Msg.error(this, "Error searching memory pattern", e);
+            return createErrorResponse("Error searching memory pattern: " + e.getMessage());
+        }
+    }
+    
     /**
      * Set a comment at the specified address
      */
@@ -1470,6 +1676,7 @@ public class GhidraMCPPlugin extends Plugin {
 
     /**
      * Parse query parameters from the URL, e.g. ?offset=10&limit=100
+     * Properly URL-decodes parameter values
      */
     public Map<String, String> parseQueryParams(HttpExchange exchange) {
         Map<String, String> result = new HashMap<>();
@@ -1477,9 +1684,18 @@ public class GhidraMCPPlugin extends Plugin {
         if (query != null) {
             String[] pairs = query.split("&");
             for (String p : pairs) {
-                String[] kv = p.split("=");
+                String[] kv = p.split("=", 2); // Split on first equals sign only
                 if (kv.length == 2) {
-                    result.put(kv[0], kv[1]);
+                    // Properly URL-decode the parameter value
+                    String key = kv[0];
+                    String value = null;
+                    try {
+                        value = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                    } catch (IllegalArgumentException e) {
+                        Msg.warn(this, "Invalid URL encoding for parameter " + key + ": " + e.getMessage());
+                        value = kv[1]; // Use raw value as fallback
+                    }
+                    result.put(key, value);
                 }
             }
         }
@@ -1488,15 +1704,19 @@ public class GhidraMCPPlugin extends Plugin {
 
     /**
      * Parse post body form params, e.g. oldName=foo&newName=bar
+     * Properly URL-decodes parameter values
      */
     public Map<String, String> parsePostParams(HttpExchange exchange) throws IOException {
         byte[] body = exchange.getRequestBody().readAllBytes();
         String bodyStr = new String(body, StandardCharsets.UTF_8);
         Map<String, String> params = new HashMap<>();
         for (String pair : bodyStr.split("&")) {
-            String[] kv = pair.split("=");
+            String[] kv = pair.split("=", 2); // Split on first equals sign only
             if (kv.length == 2) {
-                params.put(kv[0], kv[1]);
+                // Properly URL-decode the parameter value
+                String key = kv[0];
+                String value = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                params.put(key, value);
             }
         }
         return params;
