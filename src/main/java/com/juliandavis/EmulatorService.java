@@ -576,7 +576,7 @@ public class EmulatorService {
                 result.put("breakpointAddress", session.getCurrentAddress().toString());
             } else if (reachedStopAddress) {
                 result.put("stoppedReason", "targetAddress");
-            } else if (stepCount >= maxSteps) {
+            } else {
                 result.put("stoppedReason", "maxStepsReached");
             }
             
@@ -1052,7 +1052,7 @@ public class EmulatorService {
                 try {
                     byte[] bytes = new byte[pointerSize];
                     for (int j = 0; j < bytes.length; j++) {
-                        bytes[j] = emulator.readMemoryByte(stackAddr.add(i * pointerSize + j));
+                        bytes[j] = emulator.readMemoryByte(stackAddr.add((long) i * pointerSize + j));
                     }
                     
                     Map<String, Object> entry = new HashMap<>();
@@ -1223,10 +1223,7 @@ public class EmulatorService {
                 value = new BigInteger(valueStr);
             }
             
-            // Write the register value
             emulator.writeRegister(registerName, value);
-            
-            // Track the write
             session.trackRegisterWrite(registerName, value.longValue());
             
             result.put("success", true);
@@ -1380,10 +1377,7 @@ public class EmulatorService {
                 bytes[i] = (byte) Integer.parseInt(bytesHex.substring(index, index + 2), 16);
             }
             
-            // Write memory
             emulator.writeMemory(address, bytes);
-            
-            // Track the write (already tracked by filter if enabled)
             if (!session.isTrackingMemoryReads()) {
                 session.trackMemoryWrite(address, bytes);
             }

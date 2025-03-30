@@ -2,10 +2,17 @@ package com.juliandavis;
 
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
+import ghidra.program.model.address.Address;
+import ghidra.app.emulator.EmulatorHelper;
+import ghidra.program.model.lang.Register;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.math.BigInteger;
 
 /**
  * HTTP handler for emulator-related endpoints in the GhidraMCPPlugin.
@@ -89,6 +96,12 @@ public class EmulatorHttpHandler {
             plugin.sendJsonResponse(exchange, response);
         });
         
+        // Clear all breakpoints
+        plugin.getServer().createContext("/emulator/clearAllBreakpoints", exchange -> {
+            Map<String, Object> response = clearAllBreakpoints();
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
         // Get breakpoints
         plugin.getServer().createContext("/emulator/getBreakpoints", exchange -> {
             Map<String, Object> response = getBreakpoints();
@@ -108,6 +121,13 @@ public class EmulatorHttpHandler {
             String condition = params.get("condition");
             
             Map<String, Object> response = setConditionalBreakpoint(addressStr, condition);
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
+        // Clear conditional breakpoint
+        plugin.getServer().createContext("/emulator/clearConditionalBreakpoint", exchange -> {
+            String addressStr = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            Map<String, Object> response = clearConditionalBreakpoint(addressStr);
             plugin.sendJsonResponse(exchange, response);
         });
         
@@ -191,6 +211,18 @@ public class EmulatorHttpHandler {
             Map<String, Object> response = getStackTrace();
             plugin.sendJsonResponse(exchange, response);
         });
+        
+        // Get register changes
+        plugin.getServer().createContext("/emulator/getRegisterChanges", exchange -> {
+            Map<String, Object> response = getRegisterChanges();
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
+        // Dispose emulator session
+        plugin.getServer().createContext("/emulator/dispose", exchange -> {
+            Map<String, Object> response = disposeEmulatorSession();
+            plugin.sendJsonResponse(exchange, response);
+        });
     }
     
     /**
@@ -241,18 +273,28 @@ public class EmulatorHttpHandler {
         
         try {
             // Check if there's already a session for this program
-            String sessionId = programEmulatorSessions.get(program);
-            EmulatorService.EmulatorSession session = null;
+            String existingSessionId = programEmulatorSessions.get(program);
+            EmulatorService.EmulatorSession session;
             
-            if (sessionId != null) {
-                session = EmulatorService.getSession(sessionId);
+            if (existingSessionId != null) {
+                session = EmulatorService.getSession(existingSessionId);
+                
+                // If a session exists but is invalid, properly dispose it before creating a new one
+                EmulatorService.disposeSession(existingSessionId);
+                programEmulatorSessions.remove(program);
+                if (session == null) {
+                    // Try to dispose the invalid session explicitly
+                    Msg.info(this, "Disposed invalid emulator session: " + existingSessionId);
+                } else {
+                    // Properly dispose the existing valid session before creating a new one
+                    // This ensures resources are properly cleaned up
+                    Msg.info(this, "Disposed existing emulator session before initialization: " + existingSessionId);
+                }
             }
             
-            // If no valid session exists, create a new one
-            if (session == null) {
-                session = EmulatorService.createSession(program);
-                programEmulatorSessions.put(program, session.getId());
-            }
+            // Create a new session
+            session = EmulatorService.createSession(program);
+            programEmulatorSessions.put(program, session.getId());
             
             // Initialize emulator with tracking options
             boolean success = EmulatorService.initializeEmulator(session, addressStr, writeTracking);
@@ -522,5 +564,164 @@ public class EmulatorHttpHandler {
         }
         
         return EmulatorService.getStackTrace(session);
+    }
+    
+    /**
+     * Clear all breakpoints
+     */
+    private Map<String, Object> clearAllBreakpoints() {
+        EmulatorService.EmulatorSession session = getValidatedSession();
+        if (session == null) {
+            return createErrorResponse("No valid emulator session for current program");
+        }
+        
+        // Clear all breakpoints
+        session.clearBreakpoints();
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("message", "All breakpoints cleared");
+        return result;
+    }
+    
+    /**
+     * Clear a conditional breakpoint at the specified address
+     */
+    private Map<String, Object> clearConditionalBreakpoint(String addressStr) {
+        EmulatorService.EmulatorSession session = getValidatedSession();
+        if (session == null) {
+            return createErrorResponse("No valid emulator session for current program");
+        }
+        
+        try {
+            Program program = session.getProgram();
+            Address address = program.getAddressFactory().getAddress(addressStr);
+            
+            if (address == null) {
+                return createErrorResponse("Invalid address: " + addressStr);
+            }
+            
+            boolean removed = session.removeConditionalBreakpoint(address);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("address", address.toString());
+            result.put("removed", removed);
+            if (!removed) {
+                result.put("message", "No conditional breakpoint exists at this address");
+            }
+            
+            return result;
+        } catch (Exception e) {
+            ghidra.util.Msg.error(this, "Error clearing conditional breakpoint", e);
+            return createErrorResponse("Error clearing conditional breakpoint: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get register changes that occurred during emulation
+     */
+    private Map<String, Object> getRegisterChanges() {
+        EmulatorService.EmulatorSession session = getValidatedSession();
+        if (session == null) {
+            return createErrorResponse("No valid emulator session for current program");
+        }
+        
+        try {
+            // Get register write history from the session
+            Map<String, Long> registerWrites = session.getRegisterWrites();
+            
+            // Get current register state for comparison
+            EmulatorHelper emulator = session.getEmulator();
+            Program program = session.getProgram();
+            
+            List<Map<String, Object>> changes = new ArrayList<>();
+            
+            // Convert to a list of register changes with additional information
+            for (Map.Entry<String, Long> entry : registerWrites.entrySet()) {
+                String regName = entry.getKey();
+                Long trackedValue = entry.getValue();
+                
+                Map<String, Object> regChange = new HashMap<>();
+                regChange.put("register", regName);
+                regChange.put("value", String.format("0x%x", trackedValue));
+                regChange.put("decimalValue", trackedValue);
+                
+                // Try to get current value for comparison
+                try {
+                    BigInteger currentValue = emulator.readRegister(regName);
+                    
+                    // Check if current value differs from tracked value
+                    boolean changed = !currentValue.equals(BigInteger.valueOf(trackedValue));
+                    regChange.put("currentValue", currentValue.toString(16));
+                    regChange.put("currentDecimalValue", currentValue.toString());
+                    regChange.put("hasChanged", changed);
+                    
+                    // Add special flags for important registers
+                    try {
+                        Register reg = program.getLanguage().getRegister(regName);
+                        if (reg != null) {
+                            if (reg.equals(emulator.getPCRegister())) {
+                                regChange.put("isPC", true);
+                            }
+                            if (reg.equals(emulator.getStackPointerRegister())) {
+                                regChange.put("isSP", true);
+                            }
+                        }
+                    } catch (Exception e) {
+                        // Ignore errors in getting register metadata
+                    }
+                } catch (Exception e) {
+                    // If we can't read current value, just include tracked value
+                    regChange.put("hasChanged", false);
+                }
+                
+                changes.add(regChange);
+            }
+            
+            // Sort by register name for consistency
+            changes.sort(Comparator.comparing(m -> ((String)m.get("register"))));
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("changes", changes);
+            result.put("count", changes.size());
+            
+            // Include timestamp for when this data was fetched
+            result.put("timestamp", System.currentTimeMillis());
+            
+            return result;
+        } catch (Exception e) {
+            ghidra.util.Msg.error(this, "Error getting register changes", e);
+            return createErrorResponse("Error getting register changes: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Dispose of the current emulator session
+     */
+    private Map<String, Object> disposeEmulatorSession() {
+        Program program = plugin.getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        String sessionId = programEmulatorSessions.get(program);
+        if (sessionId == null) {
+            return createErrorResponse("No emulator session for current program");
+        }
+        
+        boolean disposed = EmulatorService.disposeSession(sessionId);
+        if (disposed) {
+            programEmulatorSessions.remove(program);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", disposed);
+        result.put("message", disposed ? 
+            "Emulator session disposed successfully" : 
+            "Failed to dispose emulator session");
+        
+        return result;
     }
 }
