@@ -198,6 +198,41 @@ public class EmulatorHttpHandler {
     }
     
     /**
+     * Helper method to retrieve and validate the emulator session for the current program.
+     * 
+     * @return The validated EmulatorSession or null if validation fails
+     */
+    private EmulatorService.EmulatorSession getValidatedSession() {
+        // Get the current program
+        Program program = plugin.getCurrentProgram();
+        if (program == null) {
+            return null;
+        }
+        
+        // Get session for current program
+        String sessionId = programEmulatorSessions.get(program);
+        if (sessionId == null) {
+            return null;
+        }
+        
+        // Get and validate the session
+        return EmulatorService.getSession(sessionId);
+    }
+    
+    /**
+     * Helper method to create an error response with a specific message
+     * 
+     * @param message The error message
+     * @return A Map containing the error response
+     */
+    private Map<String, Object> createErrorResponse(String message) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", message);
+        return response;
+    }
+    
+    /**
      * Initialize the emulator at the specified address
      */
     private Map<String, Object> initializeEmulator(String addressStr, boolean writeTracking) {
@@ -257,20 +292,9 @@ public class EmulatorHttpHandler {
      * Step the emulator forward by one instruction
      */
     private Map<String, Object> stepEmulator() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.stepEmulator(session);
@@ -280,20 +304,9 @@ public class EmulatorHttpHandler {
      * Run the emulator until a condition is met
      */
     private Map<String, Object> runEmulator(int maxSteps, boolean stopOnBreakpoint, String stopAddress) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.runEmulator(session, maxSteps, stopOnBreakpoint, stopAddress);
@@ -303,20 +316,9 @@ public class EmulatorHttpHandler {
      * Get the current emulator state
      */
     private Map<String, Object> getEmulatorState() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.getEmulatorState(session);
@@ -326,20 +328,9 @@ public class EmulatorHttpHandler {
      * Get memory writes from the emulator
      */
     private Map<String, Object> getMemoryWrites() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.getMemoryWrites(session);
@@ -349,20 +340,9 @@ public class EmulatorHttpHandler {
      * Import memory from emulator to program
      */
     private Map<String, Object> importMemoryToProgram(String fromAddress, String length) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.importMemoryToProgram(session, fromAddress, length);
@@ -372,20 +352,9 @@ public class EmulatorHttpHandler {
      * Set a breakpoint at the specified address
      */
     private Map<String, Object> setBreakpoint(String addressStr) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.setBreakpoint(session, addressStr);
@@ -395,20 +364,9 @@ public class EmulatorHttpHandler {
      * Clear a breakpoint at the specified address
      */
     private Map<String, Object> clearBreakpoint(String addressStr) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.clearBreakpoint(session, addressStr);
@@ -418,20 +376,9 @@ public class EmulatorHttpHandler {
      * Get all breakpoints
      */
     private Map<String, Object> getBreakpoints() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.getBreakpoints(session);
@@ -441,53 +388,21 @@ public class EmulatorHttpHandler {
      * Reset the emulator to its initial state
      */
     private Map<String, Object> resetEmulator() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.resetEmulator(session);
     }
     
     /**
-     * Create an error response
-     */
-    private Map<String, Object> createErrorResponse(String message) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", false);
-        response.put("error", message);
-        return response;
-    }
-    
-    /**
      * Set a conditional breakpoint
      */
     private Map<String, Object> setConditionalBreakpoint(String addressStr, String condition) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.setConditionalBreakpoint(session, addressStr, condition);
@@ -497,20 +412,9 @@ public class EmulatorHttpHandler {
      * Get conditional breakpoints
      */
     private Map<String, Object> getConditionalBreakpoints() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.getConditionalBreakpoints(session);
@@ -520,20 +424,9 @@ public class EmulatorHttpHandler {
      * Set register value
      */
     private Map<String, Object> setRegisterValue(String registerName, String value) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.setRegisterValue(session, registerName, value);
@@ -543,20 +436,9 @@ public class EmulatorHttpHandler {
      * Get register value
      */
     private Map<String, Object> getRegisterValue(String registerName) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.getRegisterValue(session, registerName);
@@ -566,20 +448,9 @@ public class EmulatorHttpHandler {
      * Get register names and values
      */
     private Map<String, Object> getRegisterNames() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.getRegisterNames(session);
@@ -589,20 +460,9 @@ public class EmulatorHttpHandler {
      * Write memory
      */
     private Map<String, Object> writeMemory(String addressStr, String bytesHex) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.writeMemory(session, addressStr, bytesHex);
@@ -612,20 +472,9 @@ public class EmulatorHttpHandler {
      * Read memory
      */
     private Map<String, Object> readMemory(String addressStr, int length) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.readMemory(session, addressStr, length);
@@ -635,20 +484,9 @@ public class EmulatorHttpHandler {
      * Set memory read tracking
      */
     private Map<String, Object> setMemoryReadTracking(boolean enable) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.setMemoryReadTracking(session, enable);
@@ -658,20 +496,9 @@ public class EmulatorHttpHandler {
      * Get memory reads
      */
     private Map<String, Object> getMemoryReads() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.getMemoryReads(session);
@@ -681,20 +508,9 @@ public class EmulatorHttpHandler {
      * Set stack change tracking
      */
     private Map<String, Object> setStackChangeTracking(boolean enable) {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.setStackChangeTracking(session, enable);
@@ -704,20 +520,9 @@ public class EmulatorHttpHandler {
      * Get stack trace
      */
     private Map<String, Object> getStackTrace() {
-        Program program = plugin.getCurrentProgram();
-        if (program == null) {
-            return createErrorResponse("No program loaded");
-        }
-        
-        // Get session for current program
-        String sessionId = programEmulatorSessions.get(program);
-        if (sessionId == null) {
-            return createErrorResponse("Emulator not initialized for current program");
-        }
-        
-        EmulatorService.EmulatorSession session = EmulatorService.getSession(sessionId);
+        EmulatorService.EmulatorSession session = getValidatedSession();
         if (session == null) {
-            return createErrorResponse("Invalid emulator session");
+            return createErrorResponse("No valid emulator session for current program");
         }
         
         return EmulatorService.getStackTrace(session);

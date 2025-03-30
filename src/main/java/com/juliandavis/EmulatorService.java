@@ -323,13 +323,17 @@ public class EmulatorService {
 
             // Initialize registers to reasonable defaults
             // Set default register values using writeRegister
+            // Get architecture-specific register information
+            ArchitectureHelper archHelper = new ArchitectureHelper(session.getProgram(), emulator);
+            String pcRegName = archHelper.getProgramCounterRegisterName();
+            String spRegName = archHelper.getStackPointerRegisterName();
+            
             List<Register> registers = emulator.getProgram().getLanguage().getRegisters();
             for (Register reg : registers) {
                 try {
                     String regName = reg.getName();
                     // Only set non-special registers to avoid conflicts
-                    if (!regName.equals(emulator.getPCRegister().getName()) && 
-                        !regName.equals(emulator.getStackPointerRegister().getName())) {
+                    if (!regName.equals(pcRegName) && !regName.equals(spRegName)) {
                         // Use 0 as a default value for most registers
                         emulator.writeRegister(reg, BigInteger.ZERO);
                     }
@@ -339,9 +343,8 @@ public class EmulatorService {
                 }
             }
             
-            // Set the program counter to the start address
-            String pcRegisterName = emulator.getPCRegister().getName();
-            emulator.writeRegister(pcRegisterName, startAddress.getOffset());
+            // Set the program counter to the start address using the architecture helper we created above
+            emulator.writeRegister(pcRegName, startAddress.getOffset());
             
             session.clearState();
             session.setRunning(true);
@@ -379,8 +382,11 @@ public class EmulatorService {
         try {
             EmulatorHelper emulator = session.getEmulator();
             
+            // Get architecture helper
+            ArchitectureHelper archHelper = new ArchitectureHelper(session.getProgram(), emulator);
+            
             // Get the current program counter
-            String pcRegisterName = emulator.getPCRegister().getName();
+            String pcRegisterName = archHelper.getProgramCounterRegisterName();
             Address currentPC = session.getProgram().getAddressFactory().getAddress(
                     emulator.readRegister(pcRegisterName).toString(16));
             
@@ -474,7 +480,9 @@ public class EmulatorService {
                 stopAddress = session.getProgram().getAddressFactory().getAddress(stopAddressStr);
             }
             
-            String pcRegisterName = emulator.getPCRegister().getName();
+            // Use architecture helper for processor-specific register names
+            ArchitectureHelper archHelper = new ArchitectureHelper(session.getProgram(), emulator);
+            String pcRegisterName = archHelper.getProgramCounterRegisterName();
             int stepCount = 0;
             boolean hitBreakpoint = false;
             boolean reachedStopAddress = false;
@@ -1006,42 +1014,17 @@ public class EmulatorService {
             EmulatorHelper emulator = session.getEmulator();
             Program program = session.getProgram();
             
-            // Get the stack pointer register (varies by architecture)
-            String spRegName;
-            switch (program.getLanguage().getProcessor().toString()) {
-                case "x86":
-                    spRegName = "ESP";
-                    break;
-                case "ARM":
-                    spRegName = "SP";
-                    break;
-                case "MIPS":
-                    spRegName = "sp";
-                    break;
-                default:
-                    // Try common names
-                    spRegName = emulator.getStackPointerRegister().getName();
-                    if (spRegName == null) {
-                        // Fallbacks
-                        for (String reg : new String[] {"SP", "ESP", "RSP", "sp"}) {
-                            try {
-                                emulator.readRegister(reg);
-                                spRegName = reg;
-                                break;
-                            } catch (Exception ignored) {
-                                // Not this one
-                            }
-                        }
-                        
-                        if (spRegName == null) {
-                            // Can't find stack pointer
-                            return;
-                        }
-                    }
+            // Get architecture-specific information
+            ArchitectureHelper archHelper = new ArchitectureHelper(program, emulator);
+            
+            // Get stack pointer value using architecture helper
+            String spRegName = archHelper.getStackPointerRegisterName();
+            if (spRegName == null) {
+                Msg.warn(EmulatorService.class, "Could not determine stack pointer register");
+                return;
             }
             
-            // Get stack pointer value
-            BigInteger spValue = emulator.readRegister(spRegName);
+            BigInteger spValue = archHelper.getStackPointerValue();
             if (spValue == null) {
                 return;
             }
@@ -1050,21 +1033,25 @@ public class EmulatorService {
             Map<String, Object> frame = new HashMap<>();
             frame.put("instruction", instructionAddress.toString());
             frame.put("stackPointer", spValue.toString(16));
+            frame.put("register", spRegName);
             
             // Try to read some values from the stack
             Address stackAddr = program.getAddressFactory().getAddress(spValue.toString(16));
             List<Map<String, Object>> stackValues = new ArrayList<>();
             
+            // Get pointer size for this architecture
+            int pointerSize = archHelper.getPointerSize();
+            
             // Read up to 8 stack values
             for (int i = 0; i < 8; i++) {
                 try {
-                    byte[] bytes = new byte[program.getLanguage().getLanguageDescription().getSize() / 8];
+                    byte[] bytes = new byte[pointerSize];
                     for (int j = 0; j < bytes.length; j++) {
-                        bytes[j] = emulator.readMemoryByte(stackAddr.add(i * bytes.length + j));
+                        bytes[j] = emulator.readMemoryByte(stackAddr.add(i * pointerSize + j));
                     }
                     
                     Map<String, Object> entry = new HashMap<>();
-                    entry.put("offset", i * bytes.length);
+                    entry.put("offset", i * pointerSize);
                     
                     // Convert to hex string
                     StringBuilder hexValue = new StringBuilder();
@@ -1762,14 +1749,18 @@ public class EmulatorService {
             }
             
             // Reset registers to default values
+            // Get architecture-specific register information
+            ArchitectureHelper archHelper = new ArchitectureHelper(session.getProgram(), emulator);
+            String pcRegName = archHelper.getProgramCounterRegisterName();
+            String spRegName = archHelper.getStackPointerRegisterName();
+            
             // Set default register values using writeRegister
             List<Register> registers = emulator.getProgram().getLanguage().getRegisters();
             for (Register reg : registers) {
                 try {
                     String regName = reg.getName();
                     // Only set non-special registers to avoid conflicts
-                    if (!regName.equals(emulator.getPCRegister().getName()) && 
-                        !regName.equals(emulator.getStackPointerRegister().getName())) {
+                    if (!regName.equals(pcRegName) && !regName.equals(spRegName)) {
                         // Use 0 as a default value for most registers
                         emulator.writeRegister(reg, BigInteger.ZERO);
                     }
@@ -1779,8 +1770,8 @@ public class EmulatorService {
                 }
             }
             
-            // Set PC back to start address
-            String pcRegisterName = emulator.getPCRegister().getName();
+            // Set PC back to start address using architecture helper
+            String pcRegisterName = archHelper.getProgramCounterRegisterName();
             emulator.writeRegister(pcRegisterName, startAddress.getOffset());
             
             // Clear state tracking

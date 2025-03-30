@@ -17,6 +17,534 @@ DEFAULT_TIMEOUT = 100  # Increased timeout for large binaries
 
 mcp = FastMCP("ghidra-mcp", request_timeout=300)  # 5 minute timeout for MCP requests
 
+# ----------------------------------------------------------------------------------
+# Emulator functions
+# ----------------------------------------------------------------------------------
+
+@mcp.tool()
+def emulator_initialize(address: str, write_tracking: bool = True) -> Dict[str, Any]:
+    """
+    Initialize an emulator session at the specified address.
+    
+    Args:
+        address: The address to start emulation from (e.g., "0x1400")
+        write_tracking: Whether to enable memory write tracking
+        
+    Returns:
+        Dictionary containing session ID and status information
+    """
+    response = safe_post("emulator/initialize", {
+        "address": address,
+        "writeTracking": str(write_tracking).lower()
+    })
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_step() -> Dict[str, Any]:
+    """
+    Step the emulator forward by one instruction.
+    
+    Returns:
+        Dictionary containing the result of the step operation, including:
+        - previousPC: The program counter value before stepping
+        - newPC: The program counter value after stepping
+        - instruction: The executed instruction (if available)
+    """
+    response = safe_get("emulator/step")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_run(max_steps: int = 1000, stop_on_breakpoint: bool = True, stop_address: str = None) -> Dict[str, Any]:
+    """
+    Run the emulator until a condition is met.
+    
+    Args:
+        max_steps: Maximum number of steps to execute (to prevent infinite loops)
+        stop_on_breakpoint: Whether to stop at breakpoints
+        stop_address: Optional specific address to stop at (e.g., "0x1400")
+        
+    Returns:
+        Dictionary containing the result of the run operation, including:
+        - stepsExecuted: Number of steps executed
+        - currentPC: Final program counter value
+        - stoppedReason: Why execution stopped (maxStepsReached, breakpoint, targetAddress)
+        - executedInstructions: List of instructions that were executed
+    """
+    params = {
+        "maxSteps": str(max_steps),
+        "stopOnBreakpoint": str(stop_on_breakpoint).lower()
+    }
+    
+    if stop_address:
+        params["stopAddress"] = stop_address
+    
+    response = safe_post("emulator/run", params)
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_get_state() -> Dict[str, Any]:
+    """
+    Get the current state of the emulator.
+    
+    Returns:
+        Dictionary containing the current emulator state, including:
+        - registers: Dictionary of register values
+        - programCounter: Current program counter value
+        - memory: Dictionary of modified memory locations
+        - status: Current status ("running" or "stopped")
+    """
+    response = safe_get("emulator/getState")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_get_writes() -> Dict[str, Any]:
+    """
+    Get a list of memory locations that were written during emulation.
+    
+    Returns:
+        Dictionary containing information about memory writes, including:
+        - writes: List of write objects with address, length, hexValue, and asciiValue
+        - count: Number of write objects
+    """
+    response = safe_get("emulator/getWrites")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_reset() -> Dict[str, Any]:
+    """
+    Reset the emulator to its initial state.
+    
+    Returns:
+        Dictionary containing the result of the reset operation, including:
+        - programCounter: The reset program counter value
+        - message: Status message
+    """
+    response = safe_get("emulator/reset")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_set_breakpoint(address: str) -> Dict[str, Any]:
+    """
+    Set a breakpoint at the specified address.
+    
+    Args:
+        address: The address to set the breakpoint at (e.g., "0x1400")
+        
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - address: The address where the breakpoint was set
+        - added: Whether the breakpoint was added (false if it already existed)
+    """
+    response = safe_post("emulator/setBreakpoint", address)
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_clear_breakpoint(address: str) -> Dict[str, Any]:
+    """
+    Clear a breakpoint at the specified address.
+    
+    Args:
+        address: The address to clear the breakpoint from (e.g., "0x1400")
+        
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - address: The address where the breakpoint was cleared
+        - removed: Whether the breakpoint was removed (false if it didn't exist)
+    """
+    response = safe_post("emulator/clearBreakpoint", address)
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_get_breakpoints() -> Dict[str, Any]:
+    """
+    Get a list of all active breakpoints.
+    
+    Returns:
+        Dictionary containing information about breakpoints, including:
+        - breakpoints: List of breakpoint addresses
+        - count: Number of breakpoints
+    """
+    response = safe_get("emulator/getBreakpoints")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_set_register(register: str, value: str) -> Dict[str, Any]:
+    """
+    Set the value of a specific register in the emulator.
+    
+    Args:
+        register: The name of the register to modify (e.g., "EAX")
+        value: The value to set (decimal or hex with "0x" prefix)
+        
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - register: The register that was modified
+        - value: The new value in hex
+        - decimal: The new value in decimal
+    """
+    response = safe_post("emulator/setRegister", {
+        "register": register,
+        "value": value
+    })
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_get_register(register: str) -> Dict[str, Any]:
+    """
+    Get the value of a specific register from the emulator.
+    
+    Args:
+        register: The name of the register to read (e.g., "EAX")
+        
+    Returns:
+        Dictionary containing the register value, including:
+        - register: The register name
+        - value: The register value in hex
+        - decimal: The register value in decimal
+    """
+    response = safe_get("emulator/getRegister", {"register": register})
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_get_registers() -> Dict[str, Any]:
+    """
+    Get a list of all available registers and their values.
+    
+    Returns:
+        Dictionary containing register information, including:
+        - registers: List of register objects with name, value, and special flags
+        - count: Number of registers
+    """
+    response = safe_get("emulator/getRegisters")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_read_memory(address: str, length: int = 16) -> Dict[str, Any]:
+    """
+    Read bytes from a specified memory address in the emulator.
+    
+    Args:
+        address: The address to read from (e.g., "0x1400")
+        length: The number of bytes to read (default: 16, max: 4096)
+        
+    Returns:
+        Dictionary containing the memory data, including:
+        - address: The starting address
+        - length: Number of bytes read
+        - hexValue: Hex representation of the bytes
+        - asciiValue: ASCII representation of the bytes
+    """
+    response = safe_get("emulator/readMemory", {
+        "address": address,
+        "length": str(length)
+    })
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_write_memory(address: str, bytes_hex: str) -> Dict[str, Any]:
+    """
+    Write bytes to a specified memory address in the emulator.
+    
+    Args:
+        address: The address to write to (e.g., "0x1400")
+        bytes_hex: The bytes to write as a hex string (e.g., "deadbeef")
+        
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - address: The address that was written to
+        - bytesWritten: Number of bytes written
+    """
+    response = safe_post("emulator/writeMemory", {
+        "address": address,
+        "bytes": bytes_hex
+    })
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_set_memory_read_tracking(enable: bool = True) -> Dict[str, Any]:
+    """
+    Enable or disable memory read tracking in the emulator.
+    
+    Args:
+        enable: Whether to enable or disable memory read tracking
+        
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - tracking: Whether tracking is now enabled
+        - message: Status message
+    """
+    response = safe_post("emulator/setMemoryReadTracking", {
+        "enable": str(enable).lower()
+    })
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_get_reads() -> Dict[str, Any]:
+    """
+    Get a list of memory locations that were read during emulation.
+    
+    Returns:
+        Dictionary containing information about memory reads, including:
+        - reads: List of read objects with address, length, hexValue, and asciiValue
+        - count: Number of read objects
+    """
+    response = safe_get("emulator/getReads")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_set_stack_change_tracking(enable: bool = True) -> Dict[str, Any]:
+    """
+    Enable or disable stack change tracking in the emulator.
+    
+    Args:
+        enable: Whether to enable or disable stack change tracking
+        
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - tracking: Whether tracking is now enabled
+        - message: Status message
+    """
+    response = safe_post("emulator/setStackChangeTracking", {
+        "enable": str(enable).lower()
+    })
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_get_stack_trace() -> Dict[str, Any]:
+    """
+    Get the stack trace from the emulator.
+    
+    Returns:
+        Dictionary containing stack trace information, including:
+        - stackTrace: List of stack frame objects with instruction and stack values
+        - count: Number of stack frames
+    """
+    response = safe_get("emulator/getStackTrace")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_set_conditional_breakpoint(address: str, condition: str) -> Dict[str, Any]:
+    """
+    Set a conditional breakpoint at the specified address.
+    
+    Args:
+        address: The address to set the breakpoint at (e.g., "0x1400")
+        condition: The condition expression (e.g., "EAX=0x10" or "ECX>5")
+        
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - address: The address where the breakpoint was set
+        - condition: The breakpoint condition
+        - message: Status message
+    """
+    response = safe_post("emulator/setConditionalBreakpoint", {
+        "address": address,
+        "condition": condition
+    })
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_get_conditional_breakpoints() -> Dict[str, Any]:
+    """
+    Get a list of all conditional breakpoints.
+    
+    Returns:
+        Dictionary containing information about conditional breakpoints, including:
+        - breakpoints: List of breakpoint objects with address and condition
+        - count: Number of conditional breakpoints
+    """
+    response = safe_get("emulator/getConditionalBreakpoints")
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
+@mcp.tool()
+def emulator_import_memory(from_address: str, length: str) -> Dict[str, Any]:
+    """
+    Import memory bytes from emulator to the Ghidra program.
+    
+    Args:
+        from_address: Starting address to import (e.g., "0x1400")
+        length: Length of bytes to import (as a string)
+        
+    Returns:
+        Dictionary containing the result of the import operation, including:
+        - bytesWritten: Number of bytes written to program memory
+        - fromAddress: The starting address
+        - toAddress: The ending address
+    """
+    response = safe_post("emulator/importMemory", {
+        "fromAddress": from_address,
+        "length": length
+    })
+    
+    if isinstance(response, dict):
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return {
+            "success": False,
+            "error": response if isinstance(response, str) else "Unknown error"
+        }
+
 def safe_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Any], List[Dict[str, Any]], List[str]]:
     """
     Perform a GET request and parse JSON response.
