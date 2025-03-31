@@ -33,6 +33,56 @@ public class EmulatorHttpHandler {
      * Registers emulator-related endpoints with the HTTP server
      */
     public void registerEndpoints() {
+        // Get syscall information
+        plugin.getServer().createContext("/emulator/getSyscallInfo", exchange -> {
+            Map<String, String> params = plugin.parseQueryParams(exchange);
+            String os = params.get("os");
+            String processor = params.get("processor");
+            String syscallNumberStr = params.get("syscallNumber");
+            
+            Map<String, Object> response = getSyscallInfo(os, processor, syscallNumberStr);
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
+        // Get all syscalls for an OS/processor combination
+        plugin.getServer().createContext("/emulator/getAllSyscalls", exchange -> {
+            Map<String, String> params = plugin.parseQueryParams(exchange);
+            String os = params.get("os");
+            String processor = params.get("processor");
+            
+            Map<String, Object> response = getAllSyscalls(os, processor);
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
+        // Check if syscall is I/O related
+        plugin.getServer().createContext("/emulator/isIOSyscall", exchange -> {
+            Map<String, String> params = plugin.parseQueryParams(exchange);
+            String os = params.get("os");
+            String processor = params.get("processor");
+            String syscallNumberStr = params.get("syscallNumber");
+            
+            Map<String, Object> response = isIOSyscall(os, processor, syscallNumberStr);
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
+        // Check if OS is supported
+        plugin.getServer().createContext("/emulator/isOSSupported", exchange -> {
+            Map<String, String> params = plugin.parseQueryParams(exchange);
+            String os = params.get("os");
+            
+            Map<String, Object> response = isOSSupported(os);
+            plugin.sendJsonResponse(exchange, response);
+        });
+        
+        // Check if OS/processor combination is supported
+        plugin.getServer().createContext("/emulator/isArchSupported", exchange -> {
+            Map<String, String> params = plugin.parseQueryParams(exchange);
+            String os = params.get("os");
+            String processor = params.get("processor");
+            
+            Map<String, Object> response = isArchSupported(os, processor);
+            plugin.sendJsonResponse(exchange, response);
+        });
         // Get architecture information
         plugin.getServer().createContext("/emulator/getArchitectureInfo", exchange -> {
             Map<String, Object> response = getArchitectureInfo();
@@ -793,6 +843,18 @@ public class EmulatorHttpHandler {
             result.put("languageId", program.getLanguage().getLanguageID().getIdAsString());
             result.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
             
+            // Add syscall support information
+            String os = SyscallMappings.determineOS(program);
+            result.put("detectedOS", os);
+            result.put("osSupported", SyscallMappings.isOSSupported(os));
+            result.put("archSupported", SyscallMappings.isSupported(os, processorName));
+            
+            // Get syscalls count if supported
+            if (SyscallMappings.isSupported(os, processorName)) {
+                Map<Integer, SyscallMappings.SyscallInfo> allSyscalls = SyscallMappings.getAllSyscalls(os, processorName);
+                result.put("syscallsCount", allSyscalls.size());
+            }
+            
             // Clean up resources
             emulator.dispose();
             
@@ -854,5 +916,228 @@ public class EmulatorHttpHandler {
         result.put("message", "Input data provided to stdin");
         result.put("dataLength", data.length());
         return result;
+    }
+    
+    /**
+     * Get information about a specific syscall
+     * 
+     * @param os Operating system (e.g., "linux", "macos", "windows")
+     * @param processor Processor architecture (e.g., "x86", "ARM")
+     * @param syscallNumberStr Syscall number as a string
+     * @return Map containing syscall information
+     */
+    private Map<String, Object> getSyscallInfo(String os, String processor, String syscallNumberStr) {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Check for missing parameters
+            if (os == null || processor == null || syscallNumberStr == null) {
+                return createErrorResponse("Required parameters: os, processor, syscallNumber");
+            }
+            
+            // Parse syscall number
+            int syscallNumber;
+            try {
+                // Handle both decimal and hex format
+                if (syscallNumberStr.startsWith("0x")) {
+                    syscallNumber = Integer.parseInt(syscallNumberStr.substring(2), 16);
+                } else {
+                    syscallNumber = Integer.parseInt(syscallNumberStr);
+                }
+            } catch (NumberFormatException e) {
+                return createErrorResponse("Invalid syscall number: " + syscallNumberStr);
+            }
+            
+            // Use SyscallMappings to get information
+            SyscallMappings.SyscallInfo info = SyscallMappings.getSyscallInfo(os, processor, syscallNumber);
+            
+            if (info == null) {
+                result.put("success", false);
+                result.put("message", "Syscall not found for " + os + "/" + processor + ": " + syscallNumber);
+                return result;
+            }
+            
+            result.put("success", true);
+            result.put("name", info.getName());
+            result.put("paramCount", info.getParamCount());
+            result.put("paramTypes", info.getParamTypes());
+            result.put("returnType", info.getReturnType());
+            result.put("description", info.getDescription());
+            result.put("isIO", SyscallMappings.isIOSyscall(os, processor, syscallNumber));
+            
+            return result;
+        } catch (Exception e) {
+            ghidra.util.Msg.error(this, "Error getting syscall info", e);
+            return createErrorResponse("Error getting syscall info: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get all syscalls for an OS/processor combination
+     * 
+     * @param os Operating system (e.g., "linux", "macos", "windows")
+     * @param processor Processor architecture (e.g., "x86", "ARM")
+     * @return Map containing all syscalls
+     */
+    private Map<String, Object> getAllSyscalls(String os, String processor) {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Check for missing parameters
+            if (os == null || processor == null) {
+                return createErrorResponse("Required parameters: os, processor");
+            }
+            
+            // Use SyscallMappings to get all syscalls
+            Map<Integer, SyscallMappings.SyscallInfo> allSyscalls = SyscallMappings.getAllSyscalls(os, processor);
+            
+            if (allSyscalls.isEmpty()) {
+                result.put("success", false);
+                result.put("message", "No syscalls found for " + os + "/" + processor);
+                return result;
+            }
+            
+            // Convert to a more JSON-friendly format
+            List<Map<String, Object>> syscallList = new ArrayList<>();
+            for (Map.Entry<Integer, SyscallMappings.SyscallInfo> entry : allSyscalls.entrySet()) {
+                Integer number = entry.getKey();
+                SyscallMappings.SyscallInfo info = entry.getValue();
+                
+                Map<String, Object> syscallInfo = new HashMap<>();
+                syscallInfo.put("number", number);
+                syscallInfo.put("name", info.getName());
+                syscallInfo.put("paramCount", info.getParamCount());
+                syscallInfo.put("paramTypes", info.getParamTypes());
+                syscallInfo.put("returnType", info.getReturnType());
+                syscallInfo.put("description", info.getDescription());
+                syscallInfo.put("isIO", SyscallMappings.isIOSyscall(os, processor, number));
+                
+                syscallList.add(syscallInfo);
+            }
+            
+            // Sort by syscall number for consistency
+            syscallList.sort(Comparator.comparing(m -> ((Integer)m.get("number"))));
+            
+            result.put("success", true);
+            result.put("syscalls", syscallList);
+            result.put("count", syscallList.size());
+            
+            return result;
+        } catch (Exception e) {
+            ghidra.util.Msg.error(this, "Error getting all syscalls", e);
+            return createErrorResponse("Error getting all syscalls: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Check if a syscall is I/O related
+     * 
+     * @param os Operating system (e.g., "linux", "macos", "windows")
+     * @param processor Processor architecture (e.g., "x86", "ARM")
+     * @param syscallNumberStr Syscall number as a string
+     * @return Map containing the result
+     */
+    private Map<String, Object> isIOSyscall(String os, String processor, String syscallNumberStr) {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Check for missing parameters
+            if (os == null || processor == null || syscallNumberStr == null) {
+                return createErrorResponse("Required parameters: os, processor, syscallNumber");
+            }
+            
+            // Parse syscall number
+            int syscallNumber;
+            try {
+                // Handle both decimal and hex format
+                if (syscallNumberStr.startsWith("0x")) {
+                    syscallNumber = Integer.parseInt(syscallNumberStr.substring(2), 16);
+                } else {
+                    syscallNumber = Integer.parseInt(syscallNumberStr);
+                }
+            } catch (NumberFormatException e) {
+                return createErrorResponse("Invalid syscall number: " + syscallNumberStr);
+            }
+            
+            // Use SyscallMappings to check if I/O related
+            boolean isIO = SyscallMappings.isIOSyscall(os, processor, syscallNumber);
+            
+            result.put("success", true);
+            result.put("isIO", isIO);
+            
+            // Get additional info about the syscall
+            SyscallMappings.SyscallInfo info = SyscallMappings.getSyscallInfo(os, processor, syscallNumber);
+            if (info != null) {
+                result.put("name", info.getName());
+                result.put("found", true);
+            } else {
+                result.put("found", false);
+            }
+            
+            return result;
+        } catch (Exception e) {
+            ghidra.util.Msg.error(this, "Error checking if syscall is I/O related", e);
+            return createErrorResponse("Error checking if syscall is I/O related: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Check if an OS is supported
+     * 
+     * @param os Operating system (e.g., "linux", "macos", "windows")
+     * @return Map containing the result
+     */
+    private Map<String, Object> isOSSupported(String os) {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Check for missing parameter
+            if (os == null) {
+                return createErrorResponse("Required parameter: os");
+            }
+            
+            // Use SyscallMappings to check if OS is supported
+            boolean isSupported = SyscallMappings.isOSSupported(os);
+            
+            result.put("success", true);
+            result.put("os", os);
+            result.put("isSupported", isSupported);
+            
+            return result;
+        } catch (Exception e) {
+            ghidra.util.Msg.error(this, "Error checking if OS is supported", e);
+            return createErrorResponse("Error checking if OS is supported: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Check if an OS/processor combination is supported
+     * 
+     * @param os Operating system (e.g., "linux", "macos", "windows")
+     * @param processor Processor architecture (e.g., "x86", "ARM")
+     * @return Map containing the result
+     */
+    private Map<String, Object> isArchSupported(String os, String processor) {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Check for missing parameters
+            if (os == null || processor == null) {
+                return createErrorResponse("Required parameters: os, processor");
+            }
+            
+            // Use SyscallMappings to check if OS/processor combination is supported
+            boolean isSupported = SyscallMappings.isSupported(os, processor);
+            
+            result.put("success", true);
+            result.put("os", os);
+            result.put("processor", processor);
+            result.put("isSupported", isSupported);
+            
+            return result;
+        } catch (Exception e) {
+            ghidra.util.Msg.error(this, "Error checking if arch is supported", e);
+            return createErrorResponse("Error checking if arch is supported: " + e.getMessage());
+        }
     }
 }

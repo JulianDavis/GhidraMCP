@@ -404,11 +404,24 @@ public class EmulatorService {
             // Register the stdio emulation helper
             StdioEmulationHelper stdioHelper = new StdioEmulationHelper(session);
             stdioHelper.register();
+            
+            // Log information about syscall support for this binary
+            Program program = session.getProgram(); // Get the program from the session
+            ArchitectureHelper archHelper = new ArchitectureHelper(program, emulator);
+            String os = SyscallMappings.determineOS(program);
+            String processor = archHelper.getProcessorName();
+            
+            if (SyscallMappings.isOSSupported(os) && SyscallMappings.isSupported(os, processor)) {
+                // Get all supported syscalls to log for debugging
+                java.util.Map<Integer, SyscallMappings.SyscallInfo> allSyscalls = SyscallMappings.getAllSyscalls(os, processor);
+                Msg.info(EmulatorService.class, "Loaded " + allSyscalls.size() + " syscall mappings for " 
+                        + os + "/" + processor);
+            } else {
+                Msg.warn(EmulatorService.class, "Limited or no syscall support for " + os + "/" + processor);
+            }
 
             // Initialize registers to reasonable defaults
-            // Set default register values using writeRegister
             // Get architecture-specific register information
-            ArchitectureHelper archHelper = new ArchitectureHelper(session.getProgram(), emulator);
             String pcRegName = archHelper.getProgramCounterRegisterName();
             String spRegName = archHelper.getStackPointerRegisterName();
             
