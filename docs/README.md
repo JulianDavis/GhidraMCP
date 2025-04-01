@@ -2,7 +2,6 @@
 
 Welcome to the GhidraMCP documentation. This documentation provides comprehensive information about the Ghidra Model Context Protocol (MCP) plugin, which exposes Ghidra's functionality through an HTTP API.
 
-> **Documentation Update (March 2025)**: We've reorganized our documentation to make it more accessible and easier to navigate. Previously scattered information has been consolidated into four comprehensive guides: Architecture Reference, API Reference, Development Guide, and Refactoring Status.
 
 ## Documentation Structure
 
@@ -10,9 +9,8 @@ The documentation is organized into the following sections:
 
 - **Architecture-Reference.md** - Comprehensive architecture documentation including component overview, package structure, and class responsibilities
 - **API-Reference.md** - Complete API documentation for all HTTP endpoints
-- **Development-Guide.md** - Development information including refactoring approach and class mapping
+- **Development-Guide.md** - **MANDATORY instructions** for AI assistants on using JetBrains MCP tools for incremental Java development. Contains critical procedures that MUST be followed exactly.
 - **Refactoring-Status.md** - Current progress of the refactoring effort
-- **archive/** - Historical documentation and milestone reports
 
 ## Project Overview
 
@@ -57,12 +55,14 @@ The emulation architecture and endpoints are fully documented in both the `Archi
 
 ## Development Information
 
-Development information, including the refactoring approach and class mapping, is available in the `Development-Guide.md` file, which covers:
+The `Development-Guide.md` file contains **MANDATORY instructions** for AI assistants working with the GhidraMCP codebase. This is not a set of optional guidelines - it provides critical instructions for:
 
-- Refactoring approach and principles
-- Class mapping from original to new structure
-- Implementation guidelines
-- Migration plans
+- Required incremental development approach for Java code
+- Exact patterns that MUST be followed when using JetBrains MCP tools
+- Step-by-step methodologies for code modifications
+- Verification procedures that are mandatory after each change
+
+AI assistants MUST follow these instructions precisely when making any code changes. Failure to follow these instructions will result in corrupted code, lost work, and build failures.
 
 ## Navigation Guide
 
@@ -80,5 +80,3 @@ To get started with the GhidraMCP plugin:
 1. Refer to the `Architecture-Reference.md` file for an overview of the system
 2. Check the `API-Reference.md` file for details on available endpoints
 3. Monitor the `Refactoring-Status.md` file for the latest updates on the project
-
-More specific usage guides and examples will be added as the refactoring progresses.

@@ -1,5 +1,10 @@
 # Guide to Incremental Java Development
 
+## CRITICAL NOTICE
+
+**This development guide MUST be followed precisely when using JetBrains MCP tools.** 
+The instructions in this document are specifically designed for AI assistants to make effective and safe modifications to code. Following these guidelines is **mandatory**, not optional. Deviating from these practices may result in corrupted code, lost work, or other serious issues.
+
 ## Introduction
 
 This guide will help you (as an AI assistant) work effectively with humans to incrementally develop and refactor Java code using JetBrains IDE tools. Following these practices will help you make precise, controlled edits rather than large, sweeping changes that can be difficult to review and implement.
@@ -13,7 +18,15 @@ This guide will help you (as an AI assistant) work effectively with humans to in
 
 ## Using JetBrains MCP Tools Efficiently
 
-The JetBrains MCP (Multi-Client Protocol) tools work best when making targeted edits rather than generating entire files at once. You should leverage these tools to make precise modifications to the codebase.
+**MANDATORY REQUIREMENT**: The JetBrains MCP (Multi-Client Protocol) tools MUST be used according to the patterns specified in this guide. These tools are specifically designed to work with targeted edits rather than generating entire files at once.
+
+Failure to follow these exact patterns will result in:
+- Corrupted code that doesn't compile
+- Lost work requiring manual recovery
+- Inconsistent file states that break the build process
+- Inability to properly track changes
+
+**Under no circumstances should you deviate from these prescribed methods of using the JetBrains MCP tools.**
 
 ## Practical Implementation Strategies
 
@@ -389,3 +402,17 @@ For extensive refactorings, use a phased approach:
 By taking an incremental approach to Java development and refactoring, you can produce high-quality code changes that
 are easier to review and implement. Use the JetBrains MCP tools for targeted edits, communicate clearly about your
 changes, and verify each step before proceeding to the next.
+
+## Final Reminder
+
+**This guide is not a set of suggestions—it contains mandatory instructions for using JetBrains MCP tools.**
+
+As an AI assistant, you MUST:
+1. Follow the incremental approach outlined in this document
+2. Use only the patterns demonstrated for code modifications
+3. Never attempt to generate or replace entire files in a single operation
+4. Always verify each change before proceeding to the next
+
+The guidelines in this document have been specifically designed to ensure successful code modifications when using JetBrains MCP tools. Deviating from these instructions will result in failed operations and potential damage to the codebase.
+
+**Always reference this guide when working with JetBrains MCP tools to ensure you're following the required procedures.**

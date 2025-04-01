@@ -1,20 +1,14 @@
 # GhidraMCP Refactoring Status Dashboard
 
-This document serves as the single source of truth for tracking the GhidraMCP plugin refactoring progress. It provides a comprehensive view of the project's current status, completed work, and next steps.
-
 ## Overview
 
-**Current Status**: Implementation Phase 3 - Emulator Migration
+This document serves as the single source of truth for tracking the GhidraMCP plugin refactoring progress. It provides a comprehensive view of the project's current status, completed work, and next steps.
+This is strictly a code organization refactoring effort. The goal is to restructure the existing codebase to follow better architectural patterns without adding new features or changing current functionality.
+We are preserving as much of the existing code as possible while moving it into a more maintainable structure.
 
-The refactoring project has progressed from planning to implementation. We have:
-- Created the package structure
-- Implemented core base classes
-- Completed DataTypeService migration (Phase 2)
-- Made significant progress on EmulatorService migration (Phase 3)
+## Component Status
 
-> **IMPORTANT**: This is strictly a code organization refactoring effort. The goal is to restructure the existing codebase to follow better architectural patterns without adding new features or changing current functionality. We are preserving as much of the existing code as possible while moving it into a more maintainable structure.
-
-### Status Legend
+### Component Status Legend
 - ✅ COMPLETED: Task is fully implemented and tested
 - 🔄 IN PROGRESS: Task is currently being worked on
 - ⏱️ PLANNED: Task is planned but not yet started
@@ -23,16 +17,41 @@ The refactoring project has progressed from planning to implementation. We have:
 
 ## Component Status Summary
 
-| Component | Status | Last Update | Notes |
-|-----------|--------|-------------|-------|
-| Core Infrastructure | ✅ COMPLETED | 2025-03-25 | Base classes/interfaces created |
-| DataTypeService | ✅ COMPLETED | 2025-03-15 | Fully migrated to new structure |
-| EmulatorService | 🔄 IN PROGRESS | 2025-04-01 | Dual implementation exists, migration incomplete |
-| MemoryCrossReferenceService | ⏱️ PLANNED | - | Scheduled for Phase 4 |
-| MemoryPatternSearchService | ⏱️ PLANNED | - | Scheduled for Phase 4 |
-| StringExtractionService | ⏱️ PLANNED | - | Scheduled for Phase 4 |
-| HTTP Handlers | 🔄 IN PROGRESS | 2025-04-01 | Multiple implementations exist with duplicate code |
-| GhidraMCPPlugin | 🔄 IN PROGRESS | 2025-03-25 | Basic refactoring done, integration in progress |
+| Component | Status | Architecture Alignment | Last Update | Notes |
+|-----------|--------|------------------------|-------------|-------|
+| Core Infrastructure | ✅ COMPLETED | ✅ ALIGNED | 2025-03-25 | Base classes/interfaces created |
+| DataTypeService | ✅ COMPLETED | ✅ ALIGNED | 2025-03-15 | Fully migrated to new structure |
+| EmulatorService | 🔄 IN PROGRESS | ⚠️ MISALIGNED | 2025-04-01 | Dual implementation exists, must consolidate to emulation.core |
+| MemoryCrossReferenceService | ⏱️ PLANNED | ⏱️ PENDING | - | Scheduled for Phase 4 |
+| MemoryPatternSearchService | ⏱️ PLANNED | ⏱️ PENDING | - | Scheduled for Phase 4 |
+| StringExtractionService | ⏱️ PLANNED | ⏱️ PENDING | - | Scheduled for Phase 4 |
+| HTTP Handlers | 🔄 IN PROGRESS | ⚠️ MISALIGNED | 2025-04-01 | Multiple implementations exist, must consolidate to api.handlers |
+| GhidraMCPPlugin | 🔄 IN PROGRESS | 🔄 PARTIAL | 2025-03-25 | Basic refactoring done, integration in progress |
+
+## Architecture Alignment Status
+
+This section tracks how well the current implementation aligns with the target architecture defined in Architecture-Reference.md.
+
+### Alignment Legend
+- ✅ ALIGNED: Component implementation matches the reference architecture
+- 🔄 PARTIAL: Component is partially aligned but needs further refinement
+- ⚠️ MISALIGNED: Component exists but in the wrong location or with structural issues
+- ⏱️ PENDING: Component not yet implemented
+
+### Architecture Alignment Metrics
+
+| Package Area | Components Aligned | Total Components | Alignment % |
+|--------------|-------------------|------------------|-------------|
+| Core Infrastructure | 3/4 | 75% | ServiceRegistry, Service interface, EndpointRegistry aligned |
+| Emulation | 3/6 | 50% | ArchitectureHelper, StdioEmulation, SyscallMappings aligned |
+| HTTP API | 1/4 | 25% | BaseHttpHandler aligned, specific handlers misaligned |
+| Services | 1/5 | 20% | DataTypeService aligned, others pending or misaligned |
+| **Overall Progress** | **8/19** | **42%** | **Working toward reference architecture** |
+
+### Key Areas Needing Alignment
+1. **EmulatorService & Session**: Must be consolidated in emulation.core package
+2. **HTTP Handlers**: Must be moved to api.handlers package
+3. **Utility Classes**: Must be organized according to their functional area
 
 ## Phase Status
 
@@ -116,7 +135,10 @@ The emulation component represents the most complex part of the refactoring effo
   - System call detection for multiple architectures
 
 #### EmulatorService 🔄 IN PROGRESS (70%)
-- **Location**: Partially moved to `com.juliandavis.ghidramcp.emulation.core.EmulatorService`
+- **Current Location**: Duplicate implementations at:
+  - `com.juliandavis.ghidramcp.emulation.core.EmulatorService`
+  - `com.juliandavis.ghidramcp.services.emulator.EmulatorService`
+- **Target Location (per Architecture-Reference)**: `com.juliandavis.ghidramcp.emulation.core.EmulatorService`
 - **Status**: Core functionality implemented but duplicated across packages
 - **Features Implemented**:
   - UUID-based session tracking
@@ -124,23 +146,25 @@ The emulation component represents the most complex part of the refactoring effo
   - Memory read/write tracking
   - Register value tracking
   - Breakpoint management
-- **Still Needed**:
-  - Resolve duplication between core and services packages
-  - Complete migration of all functionality
-  - Finalize service architecture in correct location
+- **Required Actions**:
+  - Consolidate into the target location (emulation.core)
+  - Refactor dependencies to use the canonical implementation
+  - Remove redundant implementation after migration
 
 #### EmulatorSession 🔄 IN PROGRESS
-- **Location**: Duplicate implementations at:
+- **Current Location**: Duplicate implementations at:
   - `com.juliandavis.ghidramcp.emulation.core.EmulatorSession`
   - `com.juliandavis.ghidramcp.services.emulator.session.EmulatorSession`
+- **Target Location (per Architecture-Reference)**: `com.juliandavis.ghidramcp.emulation.core.EmulatorSession`
 - **Status**: Both implementations appear fully functional but with slight differences
 - **Features**:
   - Enhanced tracking capabilities
   - Comprehensive I/O buffer management
   - Session state management
-- **Issues**:
-  - Duplicate implementations need to be consolidated
-  - Inconsistent usage across other components
+- **Required Actions**:
+  - Consolidate into the target location (emulation.core)
+  - Resolve any functionality differences between implementations
+  - Update dependencies to use the canonical implementation
 
 #### StdioEmulationHelper ✅ COMPLETED
 - **Location**: Moved to `com.juliandavis.ghidramcp.emulation.io.StdioEmulationHelper`
@@ -171,42 +195,47 @@ The emulation component represents the most complex part of the refactoring effo
 ### Integration Components
 
 #### EmulatorHttpHandler 🔄 IN PROGRESS (70%)
-- **Location**: Files exist in both:
+- **Current Location**: Files exist in both:
   - `com.juliandavis.ghidramcp.services.emulator.EmulatorHttpHandler`
   - `com.juliandavis.ghidramcp.services.emulator.http.EmulatorHttpHandler`
+- **Target Location (per Architecture-Reference)**: `com.juliandavis.ghidramcp.api.handlers.EmulatorHttpHandler`
 - **Status**: Both implementations have endpoints with varying levels of completeness
 - **Features**:
   - Basic implementation with endpoint registration
   - Session management and validation
   - Error handling
-- **Pending**:
-  - Resolve duplication between the two implementations
-  - Complete implementation of all endpoints in the final version
-  - Standardize on the correct package location
-  - Ensure consistent request/response handling
+- **Required Actions**:
+  - Migrate functionality to the target location (api.handlers)
+  - Ensure proper extension of BaseHttpHandler
+  - Implement consistent request/response handling
+  - Remove redundant implementations after migration
 
 #### EmulatorOperations 🔄 IN PROGRESS (20%)
-- **Location**: Initial implementation at `com.juliandavis.ghidramcp.services.emulator.operations.EmulatorOperations`
+- **Current Location**: Initial implementation at `com.juliandavis.ghidramcp.services.emulator.operations.EmulatorOperations`
+- **Target Location (per Architecture-Reference)**: `com.juliandavis.ghidramcp.emulation.core` (as part of core emulation functionality)
 - **Status**: Severely incomplete with significant internal duplication
 - **Issues**:
   - Contains many duplicated method implementations (same methods repeated verbatim)
   - Missing many methods referenced by the EmulatorHttpHandler
   - Inconsistent error handling
-- **Pending**:
+- **Required Actions**:
   - Fix internal code duplication
   - Implement missing methods
-  - Complete the run and state management methods
-  - Create proper integration with other components
+  - Move to correct target location
+  - Ensure proper integration with EmulatorService
 
 #### EmulatorServiceInitializer 🔄 IN PROGRESS
-- **Location**: Creating at `com.juliandavis.ghidramcp.services.emulator.EmulatorServiceInitializer`
+- **Current Location**: Creating at `com.juliandavis.ghidramcp.services.emulator.EmulatorServiceInitializer`
+- **Target Location (per Architecture-Reference)**: Should be part of plugin initialization, not a separate class
 - **Status**: Basic structure implemented
-- **Pending**:
-  - Complete integration with new class structure
-  - Ensure proper service lifecycle management
-  - Add validation and error handling
+- **Required Actions**:
+  - Integrate initialization logic into main plugin class
+  - Ensure proper service registry integration
+  - Implement proper lifecycle management following reference architecture
 
 ## Package Structure Status
+
+> **NOTE**: The current package structure shown below is in a transitional state and differs significantly from the target architecture described in Architecture-Reference.md. The refactoring effort is working to align the implementation with that reference architecture.
 
 ```
 com.juliandavis.ghidramcp/
@@ -254,58 +283,79 @@ com.juliandavis.ghidramcp/
 
 ## Critical Path Items
 
-These items require immediate attention to maintain the refactoring schedule:
+These items require immediate attention to align with the reference architecture:
 
-1. **Fix Code Quality Issues in EmulatorOperations** (CRITICAL PRIORITY)
-   - Fix internal method duplication where identical methods are repeated multiple times
+1. **Consolidate EmulatorService in Target Location** (CRITICAL PRIORITY)
+   - Reference architecture location: `com.juliandavis.ghidramcp.emulation.core`
+   - Move functionality from `services.emulator` implementation to the core implementation
+   - Refactor any dependent components to use the core implementation
+   - Remove duplicate implementation after migration is complete
+
+2. **Fix EmulatorOperations and Move to Correct Package** (CRITICAL PRIORITY)
+   - Reference architecture location: `com.juliandavis.ghidramcp.emulation.core`
+   - Fix internal method duplication issues
    - Implement missing functionality required by HTTP handlers
-   - Establish a proper integration pattern with other components
+   - Establish proper integration pattern with other components
 
-2. **Resolve Code Duplication Across Packages** (CRITICAL PRIORITY)
-   - EmulatorSession exists in two different packages with separate implementations
-   - EmulatorHttpHandler exists in two different packages with overlapping functionality
-   - StackTracker and BreakpointEvaluator exist in both util and operations packages
-   - Consolidate duplicate implementations into single, canonical locations
+3. **Consolidate HTTP Handlers in API Package** (HIGH PRIORITY)
+   - Reference architecture location: `com.juliandavis.ghidramcp.api.handlers`
+   - Move EmulatorHttpHandler from service package to api.handlers package
+   - Ensure consistent implementation of BaseHttpHandler pattern
+   - Standardize error handling across all handlers
 
-3. **Resolve EmulatorService Implementation Location** (CRITICAL PRIORITY)
-   - Decide on final package structure (emulation.core vs services.emulator)
-   - Consolidate duplicate implementations
-   - Maintain complete functionality during transition
+4. **Align Component Locations with Reference Architecture** (HIGH PRIORITY)
+   - Move all utility classes to their designated locations
+   - Ensure session management follows reference architecture
+   - Normalize package structure to match reference hierarchy
 
-4. **Finalize HTTP Handler Refactoring** (HIGH PRIORITY)
-   - Decide on final location (emulator vs emulator.http package)
-   - Complete migration of all endpoints
-   - Standardize error handling
-
-5. **Complete EmulatorServiceInitializer** (MEDIUM PRIORITY)
-   - Ensure proper service initialization
-   - Configure service dependencies
-   - Implement service discovery
+5. **Complete Service Registry Integration** (MEDIUM PRIORITY)
+   - Ensure all services register through ServiceRegistry
+   - Configure service dependencies as defined in reference architecture
+   - Implement proper lifecycle management
 
 ## Next Steps
 
-1. Complete the EmulatorOperations rebuild to unblock other components
-2. Finalize the EmulatorHttpHandler implementation
-3. Complete the EmulatorServiceInitializer
-4. Begin Phase 4: Migration of additional services
-5. Update documentation to reflect the new architecture
+1. **Align EmulatorService with Reference Architecture**
+   - Complete consolidation into `emulation.core` package
+   - Redirect dependencies to use the canonical implementation
+   - Remove redundant implementation in services package
+
+2. **Restructure HTTP Handlers According to Reference**
+   - Migrate all handler implementations to `api.handlers` package
+   - Ensure consistent extension of BaseHttpHandler
+   - Update endpoint registrations to use the canonical handlers
+
+3. **Refactor Package Structure to Match Reference**
+   - Move EmulatorOperations to correct location
+   - Normalize utility classes into their designated packages
+   - Align session management with reference design
+
+4. **Continue Service Migrations in Correct Locations**
+   - Start Phase 4 migrations following reference architecture patterns
+   - Ensure proper package structure from the beginning
+   - Avoid creating duplicate implementations
+
+5. **Update Documentation to Reflect Architecture Progress**
+   - Maintain alignment metrics as components are refactored
+   - Document architectural decisions for future reference
+   - Ensure technical debt is not accumulated during migration
 
 ## Issue Tracking
 
-| Issue | Status | Priority | Assigned | Notes |
-|-------|--------|----------|----------|-------|
-| EmulatorOperations code quality | ⚠️ NEEDS ATTENTION | CRITICAL | Julian | Contains duplicate method implementations and is severely incomplete |
-| Code duplication across packages | ⚠️ NEEDS ATTENTION | CRITICAL | Julian | Multiple implementations of same functionality in different packages |
-| EmulatorSession duplicate implementations | ⚠️ NEEDS ATTENTION | CRITICAL | Julian | Two separate implementations that need consolidation |
-| EmulatorService duplicate implementations | ⚠️ NEEDS ATTENTION | CRITICAL | Julian | Must resolve location and consolidate code |
-| EmulatorHttpHandler duplication | ⚠️ NEEDS ATTENTION | HIGH | Julian | Two implementations with different levels of completion |
-| Package structure inconsistency | 🔄 IN PROGRESS | MEDIUM | Julian | Several files exist in unexpected locations |
-| Service initialization flow | 🔄 IN PROGRESS | MEDIUM | Julian | Core structure implemented |
+| Issue | Status | Priority | Assigned | Architecture Impact |
+|-------|--------|----------|----------|-------------------|
+| EmulatorService location mismatch | ⚠️ NEEDS ATTENTION | CRITICAL | Julian | Blocks alignment with reference architecture |
+| EmulatorOperations code quality | ⚠️ NEEDS ATTENTION | CRITICAL | Julian | Prevents proper implementation of core functionality |
+| HTTP handlers in incorrect packages | ⚠️ NEEDS ATTENTION | HIGH | Julian | Violates API layer separation in reference architecture |
+| EmulatorSession duplicate implementations | ⚠️ NEEDS ATTENTION | HIGH | Julian | Creates confusion about canonical implementation |
+| Package structure deviations | 🔄 IN PROGRESS | MEDIUM | Julian | Entire structure needs alignment with reference |
+| Service initialization approach | 🔄 IN PROGRESS | MEDIUM | Julian | Should follow reference architecture pattern |
 
 ## Revision History
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2025-04-01 | v3.3 | Added architecture alignment metrics and reference-focused priorities |
 | 2025-04-01 | v3.2 | Updated with detailed code analysis findings |
 | 2025-04-01 | v3.1 | Updated status dashboard with code review findings |
 | 2025-04-02 | v3.0 | Initial consolidated dashboard created |
