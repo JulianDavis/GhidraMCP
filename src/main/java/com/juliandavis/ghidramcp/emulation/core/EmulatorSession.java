@@ -24,7 +24,6 @@ public class EmulatorSession {
     private final StringBuilder stderrBuffer;
     private final StringBuilder stdinBuffer;
     private Address startAddress;
-    private Address currentAddress;
     private boolean running;
     private boolean trackMemoryReads;
     private boolean trackStackChanges;
@@ -99,27 +98,8 @@ public class EmulatorSession {
      */
     public void setStartAddress(Address startAddress) {
         this.startAddress = startAddress;
-        this.currentAddress = startAddress;
     }
-    
-    /**
-     * Gets the current program counter address.
-     * 
-     * @return The current address
-     */
-    public Address getCurrentAddress() {
-        return currentAddress;
-    }
-    
-    /**
-     * Sets the current program counter address.
-     * 
-     * @param currentAddress The current address
-     */
-    public void setCurrentAddress(Address currentAddress) {
-        this.currentAddress = currentAddress;
-    }
-    
+
     /**
      * Checks if the emulator is running.
      * 
@@ -436,7 +416,7 @@ public class EmulatorSession {
      * @return The read characters
      */
     public String readStdin(int maxChars) {
-        if (stdinBuffer.length() == 0) {
+        if (stdinBuffer.isEmpty()) {
             return "";
         }
         
