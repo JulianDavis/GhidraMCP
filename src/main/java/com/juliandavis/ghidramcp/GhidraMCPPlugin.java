@@ -7,6 +7,12 @@ import com.google.gson.GsonBuilder;
 import com.juliandavis.ghidramcp.api.server.HttpServerManager;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.services.datatype.DataTypeServiceInitializer;
+import com.juliandavis.ghidramcp.emulation.initializer.EmulatorServiceInitializer;
+import com.juliandavis.ghidramcp.analysis.memory.initializer.MemoryCrossReferenceServiceInitializer;
+import com.juliandavis.ghidramcp.analysis.memory.initializer.MemoryPatternSearchServiceInitializer;
+import com.juliandavis.ghidramcp.analysis.search.initializer.StringExtractionServiceInitializer;
+import com.juliandavis.ghidramcp.test.EmulatorMigrationVerifier;
+import com.juliandavis.ghidramcp.migration.EmulatorMigrationHelper;
 import com.sun.net.httpserver.HttpServer;
 
 import ghidra.app.plugin.PluginCategoryNames;
@@ -57,6 +63,9 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         // Initialize all services
         initializeServices();
         
+        // Verify the emulator migration
+        verifyEmulatorMigration();
+        
         try {
             // Start HTTP server
             serverManager.startServer();
@@ -69,8 +78,29 @@ public class GhidraMCPPlugin extends ProgramPlugin {
      * Initialize all services used by the plugin.
      */
     private void initializeServices() {
+        ServiceRegistry registry = ServiceRegistry.getInstance();
+        
         // Initialize DataTypeService
         DataTypeServiceInitializer.initialize(this);
+        
+        // Initialize EmulatorService
+        EmulatorServiceInitializer emulatorInitializer = new EmulatorServiceInitializer(
+            this, registry);
+        emulatorInitializer.initialize();
+        
+        // Initialize memory analysis services
+        MemoryCrossReferenceServiceInitializer mcrsInitializer = new MemoryCrossReferenceServiceInitializer(
+            this, registry);
+        mcrsInitializer.initialize();
+        
+        MemoryPatternSearchServiceInitializer mpssInitializer = new MemoryPatternSearchServiceInitializer(
+            this, registry);
+        mpssInitializer.initialize();
+        
+        // Initialize search services
+        StringExtractionServiceInitializer sesInitializer = new StringExtractionServiceInitializer(
+            this, registry);
+        sesInitializer.initialize();
     }
     
     @Override
@@ -135,5 +165,59 @@ public class GhidraMCPPlugin extends ProgramPlugin {
      */
     public Gson getGson() {
         return gson;
+    }
+    
+    /**
+     * Get the ServiceRegistry instance.
+     * 
+     * @return the ServiceRegistry instance
+     */
+    public ServiceRegistry getServiceRegistry() {
+        return ServiceRegistry.getInstance();
+    }
+    
+    /**
+     * Verify that the emulator migration has been completed successfully.
+     * This method checks for duplicate handlers and verifies endpoint migration.
+     */
+    private void verifyEmulatorMigration() {
+        try {
+            // Check for duplicate handlers
+            boolean hasDuplicates = EmulatorMigrationVerifier.checkForDuplicateHandlers(this);
+            if (hasDuplicates) {
+                Msg.warn(this, "WARNING: Duplicate EmulatorHttpHandler implementations detected!");
+                Msg.warn(this, "This may cause conflicts in endpoint handling.");
+                Msg.warn(this, "Please remove the deprecated implementation in com.juliandavis package.");
+                
+                // Try to migrate sessions from old to new implementation
+                boolean sessionsMigrated = EmulatorMigrationHelper.migrateEmulatorSessions(this);
+                if (sessionsMigrated) {
+                    Msg.info(this, "Emulator sessions migration completed.");
+                } else {
+                    Msg.warn(this, "Emulator sessions migration failed or was not necessary.");
+                }
+                
+                // Try to disable the old handler
+                boolean oldHandlerDisabled = EmulatorMigrationHelper.disableOldEmulatorHandler(this);
+                if (oldHandlerDisabled) {
+                    Msg.info(this, "Old EmulatorHttpHandler has been disabled.");
+                } else {
+                    Msg.warn(this, "Failed to disable old EmulatorHttpHandler.");
+                }
+            } else {
+                Msg.info(this, "No duplicate EmulatorHttpHandler implementations detected.");
+            }
+            
+            // Verify endpoint migration
+            boolean endpointsMigrated = EmulatorMigrationVerifier.verifyEndpointMigration(this);
+            if (endpointsMigrated) {
+                Msg.info(this, "Emulator endpoints migration verified successfully.");
+            } else {
+                Msg.warn(this, "Some emulator endpoints may not have been migrated correctly.");
+                Msg.warn(this, "Please check the EmulatorHttpHandler implementation.");
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Error verifying emulator migration: " + e.getMessage(), e);
+        }
     }
 }

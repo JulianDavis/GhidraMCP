@@ -440,9 +440,7 @@ public class GhidraMCPPlugin extends Plugin {
             sendJsonResponse(exchange, DataTypeService.deleteDataType(getCurrentProgram(), name));
         });
         
-        // Initialize and register emulator endpoints
-        EmulatorHttpHandler emulatorHandler = new EmulatorHttpHandler(this);
-        emulatorHandler.registerEndpoints();
+        // Emulator endpoints are now handled by com.juliandavis.ghidramcp.api.handlers.EmulatorHttpHandler
         
         server.setExecutor(null);
         new Thread(() -> {

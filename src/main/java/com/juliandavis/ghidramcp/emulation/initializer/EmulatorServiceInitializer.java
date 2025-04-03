@@ -1,6 +1,6 @@
 package com.juliandavis.ghidramcp.emulation.initializer;
 
-import com.juliandavis.GhidraMCPPlugin;
+import com.juliandavis.ghidramcp.GhidraMCPPlugin;
 import com.juliandavis.ghidramcp.api.handlers.EmulatorHttpHandler;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.emulation.core.EmulatorService;
