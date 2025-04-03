@@ -1,31 +1,55 @@
 package com.juliandavis.ghidramcp.analysis.memory.initializer;
 
+import com.juliandavis.ghidramcp.GhidraMCPPlugin;
 import com.juliandavis.ghidramcp.analysis.memory.MemoryCrossReferenceService;
 import com.juliandavis.ghidramcp.api.handlers.MemoryCrossReferenceHttpHandler;
 import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
+import com.juliandavis.ghidramcp.core.service.initializer.BaseServiceInitializer;
 
 /**
  * Initializer for the MemoryCrossReferenceService.
  * Registers the service with the ServiceRegistry and sets up the HTTP handler.
  */
-public class MemoryCrossReferenceServiceInitializer {
+public class MemoryCrossReferenceServiceInitializer extends BaseServiceInitializer<MemoryCrossReferenceService, MemoryCrossReferenceHttpHandler> {
 
     /**
-     * Initialize the MemoryCrossReferenceService and its HTTP handler.
-     *
+     * Creates a new MemoryCrossReferenceServiceInitializer.
+     * 
+     * @param plugin The GhidraMCP plugin instance
+     * @param serviceRegistry The service registry
+     * @param endpointRegistry The endpoint registry
+     */
+    public MemoryCrossReferenceServiceInitializer(GhidraMCPPlugin plugin, ServiceRegistry serviceRegistry, EndpointRegistry endpointRegistry) {
+        super(plugin, serviceRegistry, endpointRegistry);
+    }
+    
+    @Override
+    protected MemoryCrossReferenceService createService() {
+        return new MemoryCrossReferenceService();
+    }
+    
+    @Override
+    protected MemoryCrossReferenceHttpHandler createHttpHandler() {
+        return new MemoryCrossReferenceHttpHandler(plugin);
+    }
+    
+    @Override
+    protected String getServiceName() {
+        return "MemoryCrossReferenceService";
+    }
+    
+    /**
+     * Static initialization method for backward compatibility.
+     * 
      * @param serviceRegistry The service registry to register with
      * @param endpointRegistry The endpoint registry to register the HTTP handler with
      * @param plugin The GhidraMCPPlugin instance
      */
     public static void initialize(ServiceRegistry serviceRegistry, EndpointRegistry endpointRegistry, 
-                                 com.juliandavis.ghidramcp.GhidraMCPPlugin plugin) {
-        // Create and register the service
-        MemoryCrossReferenceService service = new MemoryCrossReferenceService();
-        serviceRegistry.registerService(service);
-        
-        // Create and register the HTTP handler
-        MemoryCrossReferenceHttpHandler handler = new MemoryCrossReferenceHttpHandler(plugin);
-        endpointRegistry.registerHandler(handler);
+                                 GhidraMCPPlugin plugin) {
+        MemoryCrossReferenceServiceInitializer initializer = new MemoryCrossReferenceServiceInitializer(
+            plugin, serviceRegistry, endpointRegistry);
+        initializer.initialize();
     }
 }

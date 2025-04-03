@@ -1,223 +1,158 @@
 package com.juliandavis.ghidramcp;
 
-import java.io.IOException;
-
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.juliandavis.ghidramcp.api.server.HttpServerManager;
-import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
-import com.juliandavis.ghidramcp.services.datatype.DataTypeServiceInitializer;
-import com.juliandavis.ghidramcp.emulation.initializer.EmulatorServiceInitializer;
-import com.juliandavis.ghidramcp.analysis.memory.initializer.MemoryCrossReferenceServiceInitializer;
-import com.juliandavis.ghidramcp.analysis.memory.initializer.MemoryPatternSearchServiceInitializer;
-import com.juliandavis.ghidramcp.analysis.search.initializer.StringExtractionServiceInitializer;
-import com.juliandavis.ghidramcp.test.EmulatorMigrationVerifier;
-import com.juliandavis.ghidramcp.migration.EmulatorMigrationHelper;
-import com.sun.net.httpserver.HttpServer;
-
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.plugin.ProgramPlugin;
-import ghidra.app.services.ProgramManager;
 import ghidra.framework.plugintool.PluginInfo;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
+import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
+import com.juliandavis.ghidramcp.api.server.HttpServerManager;
+import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
+import com.juliandavis.ghidramcp.emulation.initializer.EmulatorServiceInitializer;
+import com.juliandavis.ghidramcp.analysis.data.initializer.DataTypeServiceInitializer;
+import com.juliandavis.ghidramcp.analysis.memory.initializer.MemoryCrossReferenceServiceInitializer;
+import com.juliandavis.ghidramcp.analysis.memory.initializer.MemoryPatternSearchServiceInitializer;
+import com.juliandavis.ghidramcp.analysis.search.initializer.StringExtractionServiceInitializer;
+
 /**
- * Main plugin class for the Ghidra Model Context Protocol (GhidraMCP).
+ * GhidraMCP (Model Context Protocol) Plugin
  * <p>
- * This plugin starts an HTTP server to expose program data and functionality,
- * allowing external tools to interact with Ghidra.
+ * This plugin provides an HTTP API to expose Ghidra's functionality to external tools.
+ * It uses a service-oriented architecture to organize functionality into modular components.
  */
 @PluginInfo(
     status = PluginStatus.RELEASED,
-    packageName = "GhidraMCP",
+    packageName = ghidra.app.DeveloperPluginPackage.NAME,
     category = PluginCategoryNames.ANALYSIS,
-    shortDescription = "HTTP server plugin",
-    description = "Starts an embedded HTTP server to expose program data."
+    shortDescription = "Ghidra Model Context Protocol",
+    description = "Provides an HTTP API to interact with Ghidra programmatically."
 )
 public class GhidraMCPPlugin extends ProgramPlugin {
 
+    private ServiceRegistry serviceRegistry;
     private HttpServerManager serverManager;
-    private final Gson gson;
-    
+    private EndpointRegistry endpointRegistry;
+
     /**
-     * Create a new GhidraMCPPlugin instance.
-     * 
-     * @param tool the Ghidra PluginTool
+     * Plugin constructor.
+     *
+     * @param tool The plugin tool this plugin is added to
      */
     public GhidraMCPPlugin(PluginTool tool) {
         super(tool);
+        Msg.info(this, "GhidraMCP Plugin initializing...");
         
-        Msg.info(this, "GhidraMCPPlugin loaded!");
+        // Initialize core infrastructure
+        initializeInfrastructure();
         
-        // Create JSON serializer
-        gson = new GsonBuilder()
-                .setPrettyPrinting()
-                .create();
+        // Initialize and register all services
+        registerServices();
         
-        // Initialize server manager
+        // Start the HTTP server
+        startServer();
+        
+        Msg.info(this, "GhidraMCP Plugin initialized successfully");
+    }
+    
+    private void initializeInfrastructure() {
+        // Create service registry (using singleton instance)
+        serviceRegistry = ServiceRegistry.getInstance();
+        
+        // Create endpoint registry with reference to this plugin
+        endpointRegistry = new EndpointRegistry(this);
+        
+        // Create HTTP server manager with reference to this plugin
         serverManager = new HttpServerManager(this);
+    }
+    
+    private void registerServices() {
+        // Initialize all services through their initializers
+        // Each initializer registers the service and its HTTP handlers
         
-        // Initialize all services
-        initializeServices();
+        // Data services
+        DataTypeServiceInitializer dataTypeInitializer = new DataTypeServiceInitializer(this, serviceRegistry, endpointRegistry);
+        dataTypeInitializer.initialize();
         
-        // Verify the emulator migration
-        verifyEmulatorMigration();
+        // Emulation services
+        EmulatorServiceInitializer emulatorInitializer = new EmulatorServiceInitializer(this, serviceRegistry, endpointRegistry);
+        emulatorInitializer.initialize();
         
+        // Memory analysis services
+        MemoryCrossReferenceServiceInitializer memXrefInitializer = new MemoryCrossReferenceServiceInitializer(this, serviceRegistry, endpointRegistry);
+        memXrefInitializer.initialize();
+        
+        MemoryPatternSearchServiceInitializer memPatternInitializer = new MemoryPatternSearchServiceInitializer(this, serviceRegistry, endpointRegistry);
+        memPatternInitializer.initialize();
+        
+        // Search services
+        StringExtractionServiceInitializer stringExtractionInitializer = new StringExtractionServiceInitializer(this, serviceRegistry, endpointRegistry);
+        stringExtractionInitializer.initialize();
+        
+        // TODO: Add ProgramInfoService initializer once implemented
+    }
+    
+    private void startServer() {
         try {
-            // Start HTTP server
             serverManager.startServer();
-        } catch (IOException e) {
+        }
+        catch (Exception e) {
             Msg.error(this, "Failed to start HTTP server", e);
         }
     }
     
-    /**
-     * Initialize all services used by the plugin.
-     */
-    private void initializeServices() {
-        ServiceRegistry registry = ServiceRegistry.getInstance();
-        
-        // Initialize DataTypeService
-        DataTypeServiceInitializer.initialize(this);
-        
-        // Initialize EmulatorService
-        EmulatorServiceInitializer emulatorInitializer = new EmulatorServiceInitializer(
-            this, registry);
-        emulatorInitializer.initialize();
-        
-        // Initialize memory analysis services
-        MemoryCrossReferenceServiceInitializer mcrsInitializer = new MemoryCrossReferenceServiceInitializer(
-            this, registry);
-        mcrsInitializer.initialize();
-        
-        MemoryPatternSearchServiceInitializer mpssInitializer = new MemoryPatternSearchServiceInitializer(
-            this, registry);
-        mpssInitializer.initialize();
-        
-        // Initialize search services
-        StringExtractionServiceInitializer sesInitializer = new StringExtractionServiceInitializer(
-            this, registry);
-        sesInitializer.initialize();
-    }
-    
-    @Override
-    public void init() {
-        super.init();
-        
-        // Register for program events
-        tool.getService(ProgramManager.class).addProgramChangeListener(this);
-    }
-    
-    @Override
-    public void dispose() {
-        super.dispose();
-        
-        // Stop HTTP server
-        if (serverManager != null) {
-            serverManager.stopServer();
-        }
-        
-        // Dispose all services
-        ServiceRegistry.getInstance().disposeAllServices();
-    }
-    
     @Override
     protected void programActivated(Program program) {
-        super.programActivated(program);
-        
-        // Update services with new program
-        ServiceRegistry.getInstance().programChanged(program);
+        // Notify the service registry of the program change
+        serviceRegistry.programChanged(program);
     }
     
     @Override
     protected void programDeactivated(Program program) {
-        super.programDeactivated(program);
+        // Notify the service registry of the program change
+        serviceRegistry.programChanged(null);
+    }
+    
+    @Override
+    protected void dispose() {
+        // Stop the HTTP server
+        serverManager.stopServer();
         
-        // Update services with null program
-        ServiceRegistry.getInstance().programChanged(null);
+        // Dispose all services through the service registry
+        // This will call dispose() on each service
+        serviceRegistry.disposeAllServices();
+        
+        super.dispose();
+        
+        Msg.info(this, "GhidraMCP Plugin disposed");
     }
     
     /**
-     * Get the HTTP server instance.
+     * Get the service registry
      * 
-     * @return the HTTP server instance
+     * @return The service registry
      */
-    public HttpServer getServer() {
-        return serverManager.getServer();
+    public ServiceRegistry getServiceRegistry() {
+        return serviceRegistry;
     }
     
     /**
-     * Get the HTTP server manager.
+     * Get the HTTP server manager
      * 
-     * @return the HTTP server manager
+     * @return The HTTP server manager
      */
     public HttpServerManager getServerManager() {
         return serverManager;
     }
     
     /**
-     * Get the Gson instance for JSON serialization/deserialization.
+     * Get the endpoint registry
      * 
-     * @return the Gson instance
+     * @return The endpoint registry
      */
-    public Gson getGson() {
-        return gson;
-    }
-    
-    /**
-     * Get the ServiceRegistry instance.
-     * 
-     * @return the ServiceRegistry instance
-     */
-    public ServiceRegistry getServiceRegistry() {
-        return ServiceRegistry.getInstance();
-    }
-    
-    /**
-     * Verify that the emulator migration has been completed successfully.
-     * This method checks for duplicate handlers and verifies endpoint migration.
-     */
-    private void verifyEmulatorMigration() {
-        try {
-            // Check for duplicate handlers
-            boolean hasDuplicates = EmulatorMigrationVerifier.checkForDuplicateHandlers(this);
-            if (hasDuplicates) {
-                Msg.warn(this, "WARNING: Duplicate EmulatorHttpHandler implementations detected!");
-                Msg.warn(this, "This may cause conflicts in endpoint handling.");
-                Msg.warn(this, "Please remove the deprecated implementation in com.juliandavis package.");
-                
-                // Try to migrate sessions from old to new implementation
-                boolean sessionsMigrated = EmulatorMigrationHelper.migrateEmulatorSessions(this);
-                if (sessionsMigrated) {
-                    Msg.info(this, "Emulator sessions migration completed.");
-                } else {
-                    Msg.warn(this, "Emulator sessions migration failed or was not necessary.");
-                }
-                
-                // Try to disable the old handler
-                boolean oldHandlerDisabled = EmulatorMigrationHelper.disableOldEmulatorHandler(this);
-                if (oldHandlerDisabled) {
-                    Msg.info(this, "Old EmulatorHttpHandler has been disabled.");
-                } else {
-                    Msg.warn(this, "Failed to disable old EmulatorHttpHandler.");
-                }
-            } else {
-                Msg.info(this, "No duplicate EmulatorHttpHandler implementations detected.");
-            }
-            
-            // Verify endpoint migration
-            boolean endpointsMigrated = EmulatorMigrationVerifier.verifyEndpointMigration(this);
-            if (endpointsMigrated) {
-                Msg.info(this, "Emulator endpoints migration verified successfully.");
-            } else {
-                Msg.warn(this, "Some emulator endpoints may not have been migrated correctly.");
-                Msg.warn(this, "Please check the EmulatorHttpHandler implementation.");
-            }
-        } catch (Exception e) {
-            Msg.error(this, "Error verifying emulator migration: " + e.getMessage(), e);
-        }
+    public EndpointRegistry getEndpointRegistry() {
+        return endpointRegistry;
     }
 }
