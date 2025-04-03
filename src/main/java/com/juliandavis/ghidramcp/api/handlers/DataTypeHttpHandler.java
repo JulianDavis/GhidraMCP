@@ -1,7 +1,6 @@
-package com.juliandavis.ghidramcp.services.datatype;
+package com.juliandavis.ghidramcp.api.handlers;
 
-import com.juliandavis.ghidramcp.api.handlers.BaseHttpHandler;
-import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
+import com.juliandavis.ghidramcp.analysis.data.DataTypeService;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
 import com.sun.net.httpserver.HttpExchange;

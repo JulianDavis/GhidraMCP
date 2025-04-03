@@ -1,4 +1,4 @@
-package com.juliandavis.ghidramcp.services.datatype;
+package com.juliandavis.ghidramcp.analysis.data;
 
 import com.juliandavis.ghidramcp.core.service.Service;
 
