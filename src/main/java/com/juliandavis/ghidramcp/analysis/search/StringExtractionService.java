@@ -286,7 +286,15 @@ public class StringExtractionService implements Service {
                 stringInfo.put("lengthBytes", length); // Length in bytes
                 stringInfo.put("lengthChars", stringValue.length()); // Length in characters
                 stringInfo.put("encoding", actualEncodingName);
-                stringInfo.put("isTerminated", foundString.isPossibleNullTerminated()); // If it seems null terminated
+
+                // TODO: Fix this crap lol
+                // Check if string appears to be null terminated - replaces direct call to isPossibleNullTerminated()
+                boolean isNullTerminated = false;
+                if (foundString.getDataType() != null) {
+                    String dtName = foundString.getDataType().getName().toLowerCase();
+                    isNullTerminated = dtName.contains("terminated") || dtName.contains("null");
+                }
+                stringInfo.put("isTerminated", isNullTerminated); // If it seems null terminated
 
                 // Add block info
                 MemoryBlock block = memory.getBlock(address);
@@ -320,8 +328,6 @@ public class StringExtractionService implements Service {
                     limitReached = true;
                 }
 
-            } catch (ghidra.program.model.mem.MemoryAccessException mae) {
-                Msg.warn(this, "Memory access error processing found string at " + foundString.getAddress() + ": " + mae.getMessage());
             } catch (Exception e) {
                 // Catch broader exceptions to prevent stopping the entire search
                 Msg.error(this, "Error processing found string at " + foundString.getAddress(), e);
@@ -342,12 +348,25 @@ public class StringExtractionService implements Service {
                     return "ASCII";
                 }
             }
-            // Fallback based on char size if data type is null or ambiguous
-            int charSize = fs.getCharSize();
-            if (charSize > 1) {
-                return "Unicode"; // Likely UTF-16 or UTF-32
-            } else {
-                return "ASCII"; // Default to ASCII for charSize 1
+
+
+            // https://ghidra.re/ghidra_docs/api/ghidra/program/util/string/FoundString.html
+            // TODO: Implement proper character size detection
+            // Since we can't directly access getCharSize, make a reasonable inference
+            // based on string length vs byte length
+            try {
+                String stringVal = fs.getString(memory);
+                int byteLength = fs.getLength();
+                int charLength = stringVal.length();
+                
+                // If the byte length is significantly greater than char length, likely Unicode
+                if (byteLength > (charLength * 1.5)) {
+                    return "Unicode"; // Likely UTF-16 or UTF-32
+                } else {
+                    return "ASCII"; // Default to ASCII
+                }
+            } catch (Exception e) {
+                return "ASCII"; // Default if we can't determine
             }
         }
 

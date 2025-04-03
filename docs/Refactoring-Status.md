@@ -24,7 +24,7 @@ We are preserving as much of the existing code as possible while moving it into 
 | EmulatorService | ✅ COMPLETED | ✅ ALIGNED | 2025-04-01 | Core implementation with full functionality in place |
 | MemoryCrossReferenceService | ✅ COMPLETED | ✅ ALIGNED | 2025-04-02 | Implemented in analysis.memory package |
 | MemoryPatternSearchService | ✅ COMPLETED | ✅ ALIGNED | 2025-04-02 | Implemented in analysis.memory package |
-| StringExtractionService | ✅ COMPLETED | ✅ ALIGNED | 2025-04-02 | Implemented in analysis.search package |
+| StringExtractionService | ✅ COMPLETED | ✅ ALIGNED | 2025-04-03 | Implemented in analysis.search package with fixes for FoundString compatibility |
 | HTTP Handlers | ✅ COMPLETED | ✅ ALIGNED | 2025-04-02 | All handlers moved to api.handlers and redundant code removed |
 | GhidraMCPPlugin | ✅ COMPLETED | ✅ ALIGNED | 2025-04-02 | Plugin fully refactored to use ServiceRegistry pattern |
 
@@ -388,11 +388,13 @@ These items require immediate attention to align with the reference architecture
 | HTTP handler method inconsistencies | ✅ FIXED | HIGH | Added utility methods to BaseHttpHandler and standardized implementation |
 | GhidraMCPPlugin lifecycle management | ✅ FIXED | HIGH | Plugin now properly manages service and server lifecycle |
 | Test framework for migration verification | ✅ COMPLETED | MEDIUM | Added verifier to check for duplicated endpoints |
+| StringExtractionService compatibility issues | ✅ FIXED | MEDIUM | Fixed missing method references (isPossibleNullTerminated, getCharSize) |
 
 ## Revision History
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2025-04-03 | v5.8 | Fixed FoundString compatibility issues in StringExtractionService |
 | 2025-04-03 | v5.7 | Fixed remaining issues in EmulatorHttpHandler to use the standardized methods |
 | 2025-04-03 | v5.6 | Fixed HTTP handler issues by adding common utility methods to BaseHttpHandler |
 | 2025-04-03 | v5.5 | Completed standardization of all service initializers using BaseServiceInitializer pattern |
