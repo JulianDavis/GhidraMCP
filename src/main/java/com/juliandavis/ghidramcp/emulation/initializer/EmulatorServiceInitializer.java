@@ -6,7 +6,6 @@ import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.core.service.initializer.BaseServiceInitializer;
 import com.juliandavis.ghidramcp.emulation.core.EmulatorService;
-import ghidra.util.Msg;
 
 /**
  * Initializer for the Emulator components in the GhidraMCP plugin.

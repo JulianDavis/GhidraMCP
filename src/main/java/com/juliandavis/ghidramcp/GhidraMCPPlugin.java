@@ -8,6 +8,8 @@ import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.api.server.HttpServerManager;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
@@ -35,6 +37,7 @@ public class GhidraMCPPlugin extends ProgramPlugin {
     private ServiceRegistry serviceRegistry;
     private HttpServerManager serverManager;
     private EndpointRegistry endpointRegistry;
+    private Gson gson;
 
     /**
      * Plugin constructor.
@@ -66,6 +69,9 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         
         // Create HTTP server manager with reference to this plugin
         serverManager = new HttpServerManager(this);
+        
+        // Create Gson instance for JSON serialization
+        gson = new GsonBuilder().setPrettyPrinting().create();
     }
     
     private void registerServices() {
@@ -154,5 +160,14 @@ public class GhidraMCPPlugin extends ProgramPlugin {
      */
     public EndpointRegistry getEndpointRegistry() {
         return endpointRegistry;
+    }
+    
+    /**
+     * Get the Gson instance for JSON serialization
+     * 
+     * @return the Gson instance
+     */
+    public Gson getGson() {
+        return gson;
     }
 }

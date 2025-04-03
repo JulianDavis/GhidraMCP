@@ -2,7 +2,6 @@ package com.juliandavis.ghidramcp.api.handlers;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
 import com.juliandavis.ghidramcp.analysis.memory.MemoryPatternSearchService;
-import com.sun.net.httpserver.HttpExchange;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
@@ -31,7 +30,7 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
     @Override
     public void registerEndpoints() {
         // Register endpoint for memory pattern search
-        plugin.getServer().createContext("/api/memory/pattern", exchange -> {
+        getServer().createContext("/api/memory/pattern", exchange -> {
             Program currentProgram = getCurrentProgram();
             if (currentProgram == null) {
                 sendJsonResponse(exchange, createErrorResponse("No program is currently open"));
@@ -40,8 +39,8 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
 
             // Handle different HTTP methods
             String method = exchange.getRequestMethod();
-            if ("GET".equalsIgnoreCase(method)) {
-                Map<String, String> queryParams = plugin.parseQueryParams(exchange);
+            if (isGetRequest(exchange)) {
+                Map<String, String> queryParams = parseQueryParams(exchange);
                 String pattern = queryParams.get("pattern");
                 
                 if (pattern == null || pattern.isEmpty()) {
@@ -78,8 +77,8 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
                 ));
 
                 sendJsonResponse(exchange, response);
-            } else if ("POST".equalsIgnoreCase(method)) {
-                Map<String, String> params = plugin.parsePostParams(exchange);
+            } else if (isPostRequest(exchange)) {
+                Map<String, String> params = parsePostParams(exchange);
                 String pattern = params.get("pattern");
                 
                 if (pattern == null || pattern.isEmpty()) {

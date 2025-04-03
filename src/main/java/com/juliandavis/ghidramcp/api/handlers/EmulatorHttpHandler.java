@@ -34,8 +34,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
     @Override
     public void registerEndpoints() {
         // Initialize emulator session
-        plugin.getServer().createContext("/emulator/initialize", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/initialize", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             String addressStr = params.get("address");
             boolean writeTracking = Boolean.parseBoolean(params.getOrDefault("writeTracking", "true"));
             
@@ -44,7 +44,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Step emulator
-        plugin.getServer().createContext("/emulator/step", exchange -> {
+        getServer().createContext("/emulator/step", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -58,8 +58,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Run emulator
-        plugin.getServer().createContext("/emulator/run", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/run", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             int maxSteps = Integer.parseInt(params.getOrDefault("maxSteps", "1000"));
             boolean stopOnBreakpoint = Boolean.parseBoolean(params.getOrDefault("stopOnBreakpoint", "true"));
             String stopAddress = params.get("stopAddress");
@@ -77,7 +77,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get emulator state
-        plugin.getServer().createContext("/emulator/getState", exchange -> {
+        getServer().createContext("/emulator/getState", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -91,7 +91,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get memory writes
-        plugin.getServer().createContext("/emulator/getWrites", exchange -> {
+        getServer().createContext("/emulator/getWrites", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -105,7 +105,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Reset emulator
-        plugin.getServer().createContext("/emulator/reset", exchange -> {
+        getServer().createContext("/emulator/reset", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -119,8 +119,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Set breakpoint
-        plugin.getServer().createContext("/emulator/setBreakpoint", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/setBreakpoint", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
             
             EmulatorSession session = getValidatedSession();
@@ -136,8 +136,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Clear breakpoint
-        plugin.getServer().createContext("/emulator/clearBreakpoint", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/clearBreakpoint", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
             
             EmulatorSession session = getValidatedSession();
@@ -153,7 +153,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get breakpoints
-        plugin.getServer().createContext("/emulator/getBreakpoints", exchange -> {
+        getServer().createContext("/emulator/getBreakpoints", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -167,8 +167,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Set conditional breakpoint
-        plugin.getServer().createContext("/emulator/setConditionalBreakpoint", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/setConditionalBreakpoint", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
             String condition = params.get("condition");
             
@@ -185,7 +185,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get conditional breakpoints
-        plugin.getServer().createContext("/emulator/getConditionalBreakpoints", exchange -> {
+        getServer().createContext("/emulator/getConditionalBreakpoints", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -199,8 +199,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Set register value
-        plugin.getServer().createContext("/emulator/setRegister", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/setRegister", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             String register = params.get("register");
             String value = params.get("value");
             
@@ -217,8 +217,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get register value
-        plugin.getServer().createContext("/emulator/getRegister", exchange -> {
-            Map<String, String> params = plugin.parseQueryParams(exchange);
+        getServer().createContext("/emulator/getRegister", exchange -> {
+            Map<String, String> params = parseQueryParams(exchange);
             String register = params.get("register");
             
             EmulatorSession session = getValidatedSession();
@@ -234,7 +234,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get all registers
-        plugin.getServer().createContext("/emulator/getRegisters", exchange -> {
+        getServer().createContext("/emulator/getRegisters", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -248,8 +248,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Write memory
-        plugin.getServer().createContext("/emulator/writeMemory", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/writeMemory", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
             String bytesHex = params.get("bytes_hex");
             
@@ -266,8 +266,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Read memory
-        plugin.getServer().createContext("/emulator/readMemory", exchange -> {
-            Map<String, String> params = plugin.parseQueryParams(exchange);
+        getServer().createContext("/emulator/readMemory", exchange -> {
+            Map<String, String> params = parseQueryParams(exchange);
             String address = params.get("address");
             int length = Integer.parseInt(params.getOrDefault("length", "16"));
             
@@ -284,8 +284,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Set memory read tracking
-        plugin.getServer().createContext("/emulator/setMemoryReadTracking", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/setMemoryReadTracking", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             boolean enable = Boolean.parseBoolean(params.getOrDefault("enable", "true"));
             
             EmulatorSession session = getValidatedSession();
@@ -301,7 +301,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get memory reads
-        plugin.getServer().createContext("/emulator/getReads", exchange -> {
+        getServer().createContext("/emulator/getReads", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -315,8 +315,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Set stack change tracking
-        plugin.getServer().createContext("/emulator/setStackChangeTracking", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/setStackChangeTracking", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             boolean enable = Boolean.parseBoolean(params.getOrDefault("enable", "true"));
             
             EmulatorSession session = getValidatedSession();
@@ -332,7 +332,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get stack trace
-        plugin.getServer().createContext("/emulator/getStackTrace", exchange -> {
+        getServer().createContext("/emulator/getStackTrace", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -346,8 +346,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Import memory
-        plugin.getServer().createContext("/emulator/importMemory", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/importMemory", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             String fromAddress = params.get("from_address");
             String length = params.get("length");
             
@@ -364,7 +364,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get register changes
-        plugin.getServer().createContext("/emulator/getRegisterChanges", exchange -> {
+        getServer().createContext("/emulator/getRegisterChanges", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -378,7 +378,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get stdout content
-        plugin.getServer().createContext("/emulator/getStdout", exchange -> {
+        getServer().createContext("/emulator/getStdout", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -392,7 +392,7 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Get stderr content
-        plugin.getServer().createContext("/emulator/getStderr", exchange -> {
+        getServer().createContext("/emulator/getStderr", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
             
@@ -406,8 +406,8 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         });
         
         // Provide stdin data
-        plugin.getServer().createContext("/emulator/provideStdin", exchange -> {
-            Map<String, String> params = plugin.parsePostParams(exchange);
+        getServer().createContext("/emulator/provideStdin", exchange -> {
+            Map<String, String> params = parsePostParams(exchange);
             String data = params.get("data");
             
             EmulatorSession session = getValidatedSession();

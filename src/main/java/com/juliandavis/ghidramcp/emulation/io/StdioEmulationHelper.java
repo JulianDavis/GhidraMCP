@@ -110,7 +110,7 @@ public class StdioEmulationHelper extends ghidra.pcode.emulate.BreakCallBack {
                     SyscallMappings.SyscallInfo syscallInfo = SyscallMappings.getSyscallInfo(os, processor, syscallNum);
                     
                     if (syscallInfo != null) {
-                        String syscallName = syscallInfo.getName();
+                        String syscallName = syscallInfo.name();
                         int paramCount = SyscallMappings.getSyscallParamCount(os, processor, syscallNum);
                         
                         // Log enhanced syscall information
@@ -397,8 +397,7 @@ public class StdioEmulationHelper extends ghidra.pcode.emulate.BreakCallBack {
             } else if ("getchar".equals(funcName) || "getc".equals(funcName)) {
                 return handleGetChar();
             } else if ("read".equals(funcName)) {
-                boolean handled = handleRead();
-                return handled;
+                return handleRead();
             }
             
             // For other functions, just log that we encountered them
@@ -1031,7 +1030,7 @@ public class StdioEmulationHelper extends ghidra.pcode.emulate.BreakCallBack {
                 SyscallMappings.SyscallInfo syscallInfo = SyscallMappings.getSyscallInfo(os, processor, syscallNum);
                 
                 if (syscallInfo != null) {
-                    String syscallName = syscallInfo.getName();
+                    String syscallName = syscallInfo.name();
                     
                     // Handle common I/O syscalls
                     switch (syscallName) {
@@ -1302,5 +1301,4 @@ public class StdioEmulationHelper extends ghidra.pcode.emulate.BreakCallBack {
         }
         return hexString.toString();
     }
-}
 }

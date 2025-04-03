@@ -49,59 +49,40 @@ public class SyscallMappings {
         initWindowsX86Syscalls();
         initWindowsX8664Syscalls();
     }
-    
+
     /**
-     * Represents information about a system call
-     * Contains details about the syscall name, parameters, return type, etc.
-     */
-    public static class SyscallInfo {
-        private final String name;
-        private final int paramCount;
-        private final String[] paramTypes;
-        private final String returnType;
-        private final String description;
-        
+         * Represents information about a system call
+         * Contains details about the syscall name, parameters, return type, etc.
+         */
+        public record SyscallInfo(String name, int paramCount, String[] paramTypes, String returnType, String description) {
         /**
          * Creates a new syscall information object
-         * 
-         * @param name The name of the syscall
-         * @param paramCount The number of parameters the syscall takes
-         * @param paramTypes Array of parameter type strings
-         * @param returnType The return type of the syscall
+         *
+         * @param name        The name of the syscall
+         * @param paramCount  The number of parameters the syscall takes
+         * @param paramTypes  Array of parameter type strings
+         * @param returnType  The return type of the syscall
          * @param description A brief description of what the syscall does
          */
-        public SyscallInfo(String name, int paramCount, String[] paramTypes, 
-                          String returnType, String description) {
-            this.name = name;
-            this.paramCount = paramCount;
-            this.paramTypes = paramTypes;
-            this.returnType = returnType;
-            this.description = description;
+        public SyscallInfo {
         }
-        
-        // Getters
-        public String getName() { return name; }
-        public int getParamCount() { return paramCount; }
-        public String[] getParamTypes() { return paramTypes; }
-        public String getReturnType() { return returnType; }
-        public String getDescription() { return description; }
-        
+
         @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-            sb.append(returnType).append(" ").append(name).append("(");
-            
+            public String toString() {
+                StringBuilder sb = new StringBuilder();
+                sb.append(returnType).append(" ").append(name).append("(");
+
             for (int i = 0; i < paramTypes.length; i++) {
-                sb.append(paramTypes[i]);
-                if (i < paramTypes.length - 1) {
-                    sb.append(", ");
+                    sb.append(paramTypes[i]);
+                    if (i < paramTypes.length - 1) {
+                        sb.append(", ");
+                    }
                 }
-            }
-            
+
             sb.append(") - ").append(description);
-            return sb.toString();
+                return sb.toString();
+            }
         }
-    }
     
     /**
      * Initialize Linux x86 (32-bit) syscalls
@@ -459,7 +440,7 @@ public class SyscallMappings {
     /**
      * Get information about a syscall for a specific OS and processor.
      * 
-     * @param os The operating system (e.g., "linux", "macos")
+     * @param os The operating system (e.g., "linux", "macOS")
      * @param processor The processor architecture (e.g., "x86", "ARM")
      * @param syscallNum The syscall number
      * @return The syscall information, or null if not found
@@ -478,27 +459,27 @@ public class SyscallMappings {
     /**
      * Get the name of a syscall for a specific OS and processor.
      * 
-     * @param os The operating system (e.g., "linux", "macos")
+     * @param os The operating system (e.g., "linux", "macOS")
      * @param processor The processor architecture (e.g., "x86", "ARM")
      * @param syscallNum The syscall number
      * @return The syscall name, or null if not found
      */
     public static String getSyscallName(String os, String processor, int syscallNum) {
         SyscallInfo info = getSyscallInfo(os, processor, syscallNum);
-        return info != null ? info.getName() : null;
+        return info != null ? info.name() : null;
     }
     
     /**
      * Get syscall parameter count for a specific OS, processor, and syscall number.
      * 
-     * @param os The operating system (e.g., "linux", "macos")
+     * @param os The operating system (e.g., "linux", "macOS")
      * @param processor The processor architecture (e.g., "x86", "ARM")
      * @param syscallNum The syscall number
      * @return The parameter count, or -1 if syscall not found
      */
     public static int getSyscallParamCount(String os, String processor, int syscallNum) {
         SyscallInfo info = getSyscallInfo(os, processor, syscallNum);
-        return info != null ? info.getParamCount() : -1;
+        return info != null ? info.paramCount() : -1;
     }
     
     /**
@@ -533,7 +514,7 @@ public class SyscallMappings {
             return false;
         }
         
-        String name = info.getName().toLowerCase();
+        String name = info.name().toLowerCase();
         return name.contains("read") || name.contains("write") || 
                name.contains("open") || name.contains("close") || 
                name.contains("ioctl") || name.contains("pipe") || 

@@ -2,7 +2,6 @@ package com.juliandavis.ghidramcp.api.handlers;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
 import com.juliandavis.ghidramcp.analysis.memory.MemoryCrossReferenceService;
-import com.sun.net.httpserver.HttpExchange;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
@@ -29,7 +28,7 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
     @Override
     public void registerEndpoints() {
         // Register endpoint for finding all references
-        plugin.getServer().createContext("/api/memory/references", exchange -> {
+        getServer().createContext("/api/memory/references", exchange -> {
             Program currentProgram = getCurrentProgram();
             if (currentProgram == null) {
                 sendJsonResponse(exchange, createErrorResponse("No program is currently open"));
@@ -38,8 +37,8 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
 
             // Handle different HTTP methods
             String method = exchange.getRequestMethod();
-            if ("GET".equalsIgnoreCase(method)) {
-                Map<String, String> queryParams = plugin.parseQueryParams(exchange);
+            if (isGetRequest(exchange)) {
+                Map<String, String> queryParams = parseQueryParams(exchange);
                 String targetAddress = queryParams.get("address");
                 
                 if (targetAddress == null || targetAddress.isEmpty()) {
@@ -65,8 +64,8 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
                 );
 
                 sendJsonResponse(exchange, results);
-            } else if ("POST".equalsIgnoreCase(method)) {
-                Map<String, String> params = plugin.parsePostParams(exchange);
+            } else if (isPostRequest(exchange)) {
+                Map<String, String> params = parsePostParams(exchange);
                 String targetAddress = params.get("address");
                 
                 if (targetAddress == null || targetAddress.isEmpty()) {

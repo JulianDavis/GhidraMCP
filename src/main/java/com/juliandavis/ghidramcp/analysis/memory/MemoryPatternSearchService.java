@@ -25,7 +25,7 @@ import java.util.*;
  */
 public class MemoryPatternSearchService implements Service {
 
-    private static final String SERVICE_NAME = "MemoryPatternSearchService";
+    public static final String SERVICE_NAME = "MemoryPatternSearchService";
     
     /**
      * Get the service name

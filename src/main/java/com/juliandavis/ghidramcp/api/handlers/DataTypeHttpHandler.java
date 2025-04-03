@@ -8,8 +8,6 @@ import com.sun.net.httpserver.HttpServer;
 import ghidra.util.Msg;
 
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,7 +18,6 @@ import java.util.Map;
  */
 public class DataTypeHttpHandler extends BaseHttpHandler {
     
-    private static final String CONTENT_TYPE_JSON = "application/json";
     private final DataTypeService dataTypeService;
     
     /**
@@ -51,7 +48,7 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
     
     @Override
     public void registerEndpoints() {
-        HttpServer server = getPlugin().getServer();
+        HttpServer server = getServer();
         if (server == null) {
             Msg.error(this, "Cannot register endpoints: server is null");
             return;
@@ -244,8 +241,7 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
         } else {
             // Find the structure to calculate its length (append to end)
             ghidra.program.model.data.DataType structureType = dataTypeService.findDataType(structureName);
-            if (structureType instanceof ghidra.program.model.data.Structure) {
-                ghidra.program.model.data.Structure structure = (ghidra.program.model.data.Structure) structureType;
+            if (structureType instanceof ghidra.program.model.data.Structure structure) {
                 int appendOffset = structure.getLength();
                 result = dataTypeService.addFieldToStructure(structureName, fieldName, fieldType, comment, appendOffset);
             } else {
@@ -366,146 +362,5 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
         sendJsonResponse(exchange, result);
     }
     
-    /**
-     * Send a JSON response.
-     * 
-     * @param exchange the HTTP exchange
-     * @param data the data to send as JSON
-     * @throws IOException if an I/O error occurs
-     */
-    private void sendJsonResponse(HttpExchange exchange, Map<String, Object> data) throws IOException {
-        byte[] responseBytes = getPlugin().getGson().toJson(data).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", CONTENT_TYPE_JSON);
-        exchange.sendResponseHeaders(200, responseBytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(responseBytes);
-        }
-    }
-    
-    /**
-     * Send an error response.
-     * 
-     * @param exchange the HTTP exchange
-     * @param message the error message
-     * @throws IOException if an I/O error occurs
-     */
-    private void sendErrorResponse(HttpExchange exchange, String message) throws IOException {
-        Map<String, Object> error = new HashMap<>();
-        error.put("success", false);
-        error.put("error", message);
-        
-        byte[] responseBytes = getPlugin().getGson().toJson(error).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", CONTENT_TYPE_JSON);
-        exchange.sendResponseHeaders(400, responseBytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(responseBytes);
-        }
-    }
-    
-    /**
-     * Send a method not allowed response.
-     * 
-     * @param exchange the HTTP exchange
-     * @throws IOException if an I/O error occurs
-     */
-    private void sendMethodNotAllowedResponse(HttpExchange exchange) throws IOException {
-        Map<String, Object> error = new HashMap<>();
-        error.put("success", false);
-        error.put("error", "Method not allowed");
-        
-        byte[] responseBytes = getPlugin().getGson().toJson(error).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", CONTENT_TYPE_JSON);
-        exchange.sendResponseHeaders(405, responseBytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(responseBytes);
-        }
-    }
-    
-    /**
-     * Check if the request is a GET request.
-     * 
-     * @param exchange the HTTP exchange
-     * @return true if the request is a GET request, false otherwise
-     */
-    private boolean isGetRequest(HttpExchange exchange) {
-        return "GET".equals(exchange.getRequestMethod());
-    }
-    
-    /**
-     * Check if the request is a POST request.
-     * 
-     * @param exchange the HTTP exchange
-     * @return true if the request is a POST request, false otherwise
-     */
-    private boolean isPostRequest(HttpExchange exchange) {
-        return "POST".equals(exchange.getRequestMethod());
-    }
-    
-    /**
-     * Parse query parameters from the exchange.
-     * 
-     * @param exchange the HTTP exchange
-     * @return a map of query parameters
-     */
-    private Map<String, String> parseQueryParams(HttpExchange exchange) {
-        Map<String, String> queryParams = new HashMap<>();
-        String query = exchange.getRequestURI().getQuery();
-        
-        if (query != null && !query.isEmpty()) {
-            for (String param : query.split("&")) {
-                String[] pair = param.split("=");
-                if (pair.length > 1) {
-                    queryParams.put(pair[0], pair[1]);
-                } else {
-                    queryParams.put(pair[0], "");
-                }
-            }
-        }
-        
-        return queryParams;
-    }
-    
-    /**
-     * Parse POST parameters from the exchange.
-     * 
-     * @param exchange the HTTP exchange
-     * @return a map of POST parameters
-     * @throws IOException if an I/O error occurs
-     */
-    private Map<String, String> parsePostParams(HttpExchange exchange) throws IOException {
-        String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-        Map<String, String> postParams = new HashMap<>();
-        
-        if (requestBody != null && !requestBody.isEmpty()) {
-            for (String param : requestBody.split("&")) {
-                String[] pair = param.split("=");
-                if (pair.length > 1) {
-                    postParams.put(pair[0], pair[1]);
-                } else {
-                    postParams.put(pair[0], "");
-                }
-            }
-        }
-        
-        return postParams;
-    }
-    
-    /**
-     * Parse an integer from a string with a default value.
-     * 
-     * @param value the string to parse
-     * @param defaultValue the default value to use if parsing fails
-     * @return the parsed integer or the default value
-     */
-    private int parseIntOrDefault(String value, int defaultValue) {
-        if (value == null) {
-            return defaultValue;
-        }
-        
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
-    }
+    // These methods are now provided by BaseHttpHandler, so we don't need to reimplement them
 }

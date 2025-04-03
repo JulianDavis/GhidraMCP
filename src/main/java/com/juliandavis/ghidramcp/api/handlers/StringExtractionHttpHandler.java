@@ -2,7 +2,6 @@ package com.juliandavis.ghidramcp.api.handlers;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
 import com.juliandavis.ghidramcp.analysis.search.StringExtractionService;
-import com.sun.net.httpserver.HttpExchange;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
@@ -31,7 +30,7 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
     @Override
     public void registerEndpoints() {
         // Register endpoint for string extraction
-        plugin.getServer().createContext("/api/strings", exchange -> {
+        getServer().createContext("/api/strings", exchange -> {
             Program currentProgram = getCurrentProgram();
             if (currentProgram == null) {
                 sendJsonResponse(exchange, createErrorResponse("No program is currently open"));
@@ -40,8 +39,8 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
 
             // Handle different HTTP methods
             String method = exchange.getRequestMethod();
-            if ("GET".equalsIgnoreCase(method)) {
-                Map<String, String> queryParams = plugin.parseQueryParams(exchange);
+            if (isGetRequest(exchange)) {
+                Map<String, String> queryParams = parseQueryParams(exchange);
                 
                 // Parse parameters
                 int minLength = parseInt(queryParams.get("minLength"), 4);
@@ -77,8 +76,8 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
                 ));
 
                 sendJsonResponse(exchange, response);
-            } else if ("POST".equalsIgnoreCase(method)) {
-                Map<String, String> params = plugin.parsePostParams(exchange);
+            } else if (isPostRequest(exchange)) {
+                Map<String, String> params = parsePostParams(exchange);
                 
                 // Parse parameters
                 int minLength = parseInt(params.get("minLength"), 4);

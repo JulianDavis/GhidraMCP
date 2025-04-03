@@ -10,6 +10,7 @@ import com.juliandavis.ghidramcp.GhidraMCPPlugin;
 import com.juliandavis.ghidramcp.core.service.Service;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
@@ -82,6 +83,16 @@ public abstract class BaseHttpHandler {
     }
     
     /**
+     * Send a JSON response to the client.
+     * 
+     * @param exchange the HTTP exchange
+     * @param responseMap the response map to serialize as JSON
+     */
+    protected void sendJsonResponse(HttpExchange exchange, Map<String, Object> responseMap) {
+        sendJsonResponse(exchange, (Object) responseMap);
+    }
+    
+    /**
      * Create a standardized error response.
      * 
      * @param message the error message
@@ -108,9 +119,150 @@ public abstract class BaseHttpHandler {
     }
     
     /**
+     * Send an error response.
+     * 
+     * @param exchange the HTTP exchange
+     * @param message the error message
+     * @throws IOException if an I/O error occurs
+     */
+    protected void sendErrorResponse(HttpExchange exchange, String message) throws IOException {
+        Map<String, Object> error = createErrorResponse(message);
+        
+        byte[] responseBytes = plugin.getGson().toJson(error).getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(400, responseBytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(responseBytes);
+        }
+    }
+    
+    /**
+     * Send a method not allowed response.
+     * 
+     * @param exchange the HTTP exchange
+     * @throws IOException if an I/O error occurs
+     */
+    protected void sendMethodNotAllowedResponse(HttpExchange exchange) throws IOException {
+        Map<String, Object> error = createErrorResponse("Method not allowed");
+        
+        byte[] responseBytes = plugin.getGson().toJson(error).getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(405, responseBytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(responseBytes);
+        }
+    }
+    
+    /**
      * Register endpoints for this handler with the HTTP server.
      * <p>
      * This method should be implemented by subclasses to register their endpoints.
      */
     public abstract void registerEndpoints();
+    
+    /**
+     * Get the plugin instance.
+     * 
+     * @return the GhidraMCPPlugin instance
+     */
+    protected GhidraMCPPlugin getPlugin() {
+        return plugin;
+    }
+    
+    /**
+     * Parse query parameters from the exchange.
+     * 
+     * @param exchange the HTTP exchange
+     * @return a map of query parameters
+     */
+    protected Map<String, String> parseQueryParams(HttpExchange exchange) {
+        Map<String, String> queryParams = new HashMap<>();
+        String query = exchange.getRequestURI().getQuery();
+        
+        if (query != null && !query.isEmpty()) {
+            for (String param : query.split("&")) {
+                String[] pair = param.split("=");
+                if (pair.length > 1) {
+                    queryParams.put(pair[0], pair[1]);
+                } else {
+                    queryParams.put(pair[0], "");
+                }
+            }
+        }
+        
+        return queryParams;
+    }
+    
+    /**
+     * Parse POST parameters from the exchange.
+     * 
+     * @param exchange the HTTP exchange
+     * @return a map of POST parameters
+     * @throws IOException if an I/O error occurs
+     */
+    protected Map<String, String> parsePostParams(HttpExchange exchange) throws IOException {
+        String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        Map<String, String> postParams = new HashMap<>();
+        
+        if (!requestBody.isEmpty()) {
+            for (String param : requestBody.split("&")) {
+                String[] pair = param.split("=");
+                if (pair.length > 1) {
+                    postParams.put(pair[0], pair[1]);
+                } else {
+                    postParams.put(pair[0], "");
+                }
+            }
+        }
+        
+        return postParams;
+    }
+    
+    /**
+     * Get the HTTP server instance from the plugin.
+     * 
+     * @return the HTTP server instance
+     */
+    protected HttpServer getServer() {
+        return plugin.getServerManager().getServer();
+    }
+    
+    /**
+     * Check if the request is a GET request.
+     * 
+     * @param exchange the HTTP exchange
+     * @return true if the request is a GET request, false otherwise
+     */
+    protected boolean isGetRequest(HttpExchange exchange) {
+        return "GET".equals(exchange.getRequestMethod());
+    }
+    
+    /**
+     * Check if the request is a POST request.
+     * 
+     * @param exchange the HTTP exchange
+     * @return true if the request is a POST request, false otherwise
+     */
+    protected boolean isPostRequest(HttpExchange exchange) {
+        return "POST".equals(exchange.getRequestMethod());
+    }
+    
+    /**
+     * Parse an integer from a string with a default value.
+     * 
+     * @param value the string to parse
+     * @param defaultValue the default value to use if parsing fails
+     * @return the parsed integer or the default value
+     */
+    protected int parseIntOrDefault(String value, int defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
 }

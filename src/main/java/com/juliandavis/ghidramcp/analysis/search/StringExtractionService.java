@@ -29,7 +29,7 @@ import java.util.*;
  */
 public class StringExtractionService implements Service {
 
-    private static final String SERVICE_NAME = "StringExtractionService";
+    public static final String SERVICE_NAME = "StringExtractionService";
 
     /**
      * Get the service name

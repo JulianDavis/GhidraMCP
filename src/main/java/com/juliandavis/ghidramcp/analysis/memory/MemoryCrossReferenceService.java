@@ -30,7 +30,7 @@ import java.util.*;
  */
 public class MemoryCrossReferenceService implements Service {
 
-    private static final String SERVICE_NAME = "MemoryCrossReferenceService";
+    public static final String SERVICE_NAME = "MemoryCrossReferenceService";
 
     /**
      * Get the service name

@@ -28,7 +28,7 @@ public class HttpServerManager {
     private final GhidraMCPPlugin plugin;
     private HttpServer server;
     private int port;
-    private EndpointRegistry endpointRegistry;
+    private final EndpointRegistry endpointRegistry;
     
     /**
      * Create a new HttpServerManager with the default port.
