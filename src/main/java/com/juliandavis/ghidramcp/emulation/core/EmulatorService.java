@@ -978,28 +978,31 @@ public class EmulatorService implements Service {
             session.trackMemoryRead(addr, bytes);
 
             // Convert to hex string
-            StringBuilder hex = new StringBuilder();
-            for (byte b : bytes) {
-                hex.append(String.format("%02x", b));
-            }
-
-            // Convert to ASCII string
-            StringBuilder ascii = new StringBuilder();
-            for (byte b : bytes) {
-                ascii.append(isPrintable(b) ? (char) b : '.');
-            }
-
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("address", address);
-            result.put("length", length);
-            result.put("hexValue", hex.toString());
-            result.put("asciiValue", ascii.toString());
-
-            return result;
+            return getResult(address, length, bytes);
         } catch (Exception e) {
             return createErrorResult("Failed to read memory: " + e.getMessage());
         }
+    }
+
+    private Map<String, Object> getResult(String address, int length, byte[] bytes) {
+        StringBuilder hex = new StringBuilder();
+        for (byte b : bytes) {
+            hex.append(String.format("%02x", b));
+        }
+
+        // Convert to ASCII string
+        StringBuilder ascii = new StringBuilder();
+        for (byte b : bytes) {
+            ascii.append(isPrintable(b) ? (char) b : '.');
+        }
+
+        // Create the result
+        Map<String, Object> result = new HashMap<>();
+        result.put("address", address);
+        result.put("length", length);
+        result.put("hexValue", hex.toString());
+        result.put("asciiValue", ascii.toString());
+        return result;
     }
 
     /**
