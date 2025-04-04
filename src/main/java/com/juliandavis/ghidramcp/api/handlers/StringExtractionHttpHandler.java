@@ -5,8 +5,6 @@ import com.juliandavis.ghidramcp.analysis.search.StringExtractionService;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -52,7 +50,7 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
                 int maxResults = parseInt(queryParams.get("maxResults"), 1000);
 
                 // Extract strings
-                List<Map<String, Object>> results = stringExtractionService.extractStrings(
+                Map<String, Object> result = stringExtractionService.extractStrings(
                         currentProgram,
                         minLength,
                         encoding,
@@ -63,19 +61,8 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
                         TaskMonitor.DUMMY
                 );
 
-                Map<String, Object> response = new HashMap<>();
-                response.put("strings", results);
-                response.put("count", results.size());
-                response.put("searchCriteria", Map.of(
-                        "minLength", minLength,
-                        "encoding", encoding.toString(),
-                        "searchRWMemory", searchRWMemory,
-                        "searchROMemory", searchROMemory,
-                        "searchExecutableMemory", searchExecutableMemory,
-                        "maxResults", maxResults
-                ));
-
-                sendJsonResponse(exchange, response);
+                // Just pass through the standardized response from the service
+                sendJsonResponse(exchange, result);
             } else if (isPostRequest(exchange)) {
                 Map<String, String> params = parsePostParams(exchange);
                 
@@ -89,7 +76,7 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
                 int maxResults = parseInt(params.get("maxResults"), 1000);
 
                 // Extract strings
-                List<Map<String, Object>> results = stringExtractionService.extractStrings(
+                Map<String, Object> result = stringExtractionService.extractStrings(
                         currentProgram,
                         minLength,
                         encoding,
@@ -100,19 +87,8 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
                         TaskMonitor.DUMMY
                 );
 
-                Map<String, Object> response = new HashMap<>();
-                response.put("strings", results);
-                response.put("count", results.size());
-                response.put("searchCriteria", Map.of(
-                        "minLength", minLength,
-                        "encoding", encoding.toString(),
-                        "searchRWMemory", searchRWMemory,
-                        "searchROMemory", searchROMemory,
-                        "searchExecutableMemory", searchExecutableMemory,
-                        "maxResults", maxResults
-                ));
-
-                sendJsonResponse(exchange, response);
+                // Just pass through the standardized response from the service
+                sendJsonResponse(exchange, result);
             } else {
                 sendJsonResponse(exchange, createErrorResponse("Unsupported HTTP method: " + method));
             }

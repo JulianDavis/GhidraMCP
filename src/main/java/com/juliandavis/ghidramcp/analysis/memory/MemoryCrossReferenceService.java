@@ -59,6 +59,55 @@ public class MemoryCrossReferenceService implements Service {
     public void dispose() {
         // No resources to dispose
     }
+    
+    /**
+     * Creates a standardized error response with default error code (400)
+     * 
+     * @param errorMessage The error message
+     * @return Map representing the error response
+     */
+    private Map<String, Object> createErrorResponse(String errorMessage) {
+        return createErrorResponse(errorMessage, 400);
+    }
+    
+    /**
+     * Creates a standardized error response
+     * 
+     * @param errorMessage The error message
+     * @param errorCode Optional error code
+     * @return Map representing the error response
+     */
+    private Map<String, Object> createErrorResponse(String errorMessage, int errorCode) {
+        Map<String, Object> response = new HashMap<>();
+        Map<String, Object> errorDetails = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "error");
+        
+        // Error details
+        errorDetails.put("message", errorMessage);
+        errorDetails.put("code", errorCode);
+        
+        response.put("error", errorDetails);
+        
+        return response;
+    }
+    
+    /**
+     * Creates a standardized success response
+     * 
+     * @param data The data to include in the response
+     * @return Map representing the success response
+     */
+    private Map<String, Object> createSuccessResponse(Map<String, Object> data) {
+        Map<String, Object> response = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "success");
+        response.put("data", data);
+        
+        return response;
+    }
 
     /**
      * Read an address value from a ByteBuffer based on pointer size.
@@ -98,8 +147,6 @@ public class MemoryCrossReferenceService implements Service {
             int maxScanResults,
             TaskMonitor monitor) {
 
-        Map<String, Object> result = new HashMap<>();
-
         try {
             // First, get known references from the ReferenceManager
             List<Map<String, Object>> knownRefs = getKnownReferences(program, targetAddressStr, monitor);
@@ -137,31 +184,31 @@ public class MemoryCrossReferenceService implements Service {
             // Address validation for better error reporting
             Address targetAddress = program.getAddressFactory().getAddress(targetAddressStr);
 
-            result.put("targetAddress", targetAddressStr);
-            result.put("targetAddressValid", targetAddress != null);
-            result.put("knownReferences", knownRefs);
-            result.put("knownReferenceCount", knownRefs.size());
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("targetAddress", targetAddressStr);
+            responseData.put("targetAddressValid", targetAddress != null);
+            responseData.put("knownReferences", knownRefs);
+            responseData.put("knownReferenceCount", knownRefs.size());
 
             if (includeMemoryScan) {
-                result.put("discoveredReferences", discoveredRefs);
-                result.put("discoveredReferenceCount", discoveredRefs.size());
-                result.put("memorySearchCriteria", Map.of(
+                responseData.put("discoveredReferences", discoveredRefs);
+                responseData.put("discoveredReferenceCount", discoveredRefs.size());
+                responseData.put("memorySearchCriteria", Map.of(
                         "searchOnlyExecutable", searchOnlyExecutable,
                         "searchOnlyReadable", searchOnlyReadable,
                         "maxResults", maxScanResults
                 ));
             }
 
-            result.put("totalReferenceCount", knownRefs.size() + discoveredRefs.size());
-            result.put("success", true);
-
+            responseData.put("totalReferenceCount", knownRefs.size() + discoveredRefs.size());
+            
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
-            result.put("success", false);
-            result.put("error", e.getMessage());
             Msg.error(MemoryCrossReferenceService.class, "Error finding references", e);
+            return createErrorResponse("Error finding references: " + e.getMessage());
         }
-
-        return result;
     }
 
     /**

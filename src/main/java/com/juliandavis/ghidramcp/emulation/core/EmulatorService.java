@@ -62,15 +62,52 @@ public class EmulatorService implements Service {
     }
 
     /**
-     * Creates an error result map.
+     * Creates a standardized error result map.
      *
      * @param errorMessage the error message
-     * @return a map containing the error information
+     * @param errorCode optional error code (default: 400)
+     * @return a map containing the standardized error information
+     */
+    private Map<String, Object> createErrorResult(String errorMessage, int errorCode) {
+        Map<String, Object> response = new HashMap<>();
+        Map<String, Object> errorDetails = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "error");
+        
+        // Error details
+        errorDetails.put("message", errorMessage);
+        errorDetails.put("code", errorCode);
+        
+        response.put("error", errorDetails);
+        
+        return response;
+    }
+    
+    /**
+     * Creates a standardized error result map with default error code (400).
+     *
+     * @param errorMessage the error message
+     * @return a map containing the standardized error information
      */
     private Map<String, Object> createErrorResult(String errorMessage) {
-        Map<String, Object> result = new HashMap<>();
-        result.put("error", errorMessage);
-        return result;
+        return createErrorResult(errorMessage, 400);
+    }
+    
+    /**
+     * Creates a standardized success result map.
+     *
+     * @param data the data to include in the response
+     * @return a map containing the standardized success information
+     */
+    private Map<String, Object> createSuccessResult(Map<String, Object> data) {
+        Map<String, Object> response = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "success");
+        response.put("data", data);
+        
+        return response;
     }
 
     /**
@@ -110,13 +147,14 @@ public class EmulatorService implements Service {
             // Store the session
             sessions.put(sessionId, session);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("sessionId", sessionId);
-            result.put("programCounter", addr.toString());
-            result.put("writeTracking", writeTracking);
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("sessionId", sessionId);
+            data.put("programCounter", addr.toString());
+            data.put("writeTracking", writeTracking);
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to initialize emulator: " + e.getMessage());
         }
@@ -249,17 +287,18 @@ public class EmulatorService implements Service {
             BigInteger pcValue = emulator.readRegister(pcRegister);
             Address pcAddress = currentProgram.getAddressFactory().getAddress(pcValue.toString(16));
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("sessionId", sessionId);
-            result.put("programCounter", pcAddress.toString());
-            result.put("running", session.isRunning());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("sessionId", sessionId);
+            data.put("programCounter", pcAddress.toString());
+            data.put("running", session.isRunning());
 
             if (session.getLastError() != null) {
-                result.put("lastError", session.getLastError());
+                data.put("lastError", session.getLastError());
             }
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get emulator state: " + e.getMessage());
         }
@@ -326,14 +365,14 @@ public class EmulatorService implements Service {
                 trackStackChanges(session, pcAddressBefore);
             }
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("sessionId", sessionId);
-            result.put("success", true);
-            result.put("fromAddress", pcAddressBefore.toString());
-            result.put("toAddress", pcAddressAfter.toString());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("sessionId", sessionId);
+            data.put("fromAddress", pcAddressBefore.toString());
+            data.put("toAddress", pcAddressAfter.toString());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             session.setLastError("Exception during step: " + e.getMessage());
             return createErrorResult("Failed to step emulator: " + e.getMessage());
@@ -444,17 +483,18 @@ public class EmulatorService implements Service {
                 trackStackChanges(session, pcAddressBefore);
             }
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("sessionId", sessionId);
-            result.put("stepsExecuted", stepsExecuted);
-            result.put("fromAddress", pcAddressBefore.toString());
-            result.put("toAddress", pcAddressAfter.toString());
-            result.put("hitBreakpoint", hitBreakpoint);
-            result.put("reachedStopAddress", reachedStopAddress);
-            result.put("hitMaxSteps", stepsExecuted >= maxSteps);
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("sessionId", sessionId);
+            data.put("stepsExecuted", stepsExecuted);
+            data.put("fromAddress", pcAddressBefore.toString());
+            data.put("toAddress", pcAddressAfter.toString());
+            data.put("hitBreakpoint", hitBreakpoint);
+            data.put("reachedStopAddress", reachedStopAddress);
+            data.put("hitMaxSteps", stepsExecuted >= maxSteps);
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             session.setRunning(false);
             session.setLastError("Exception during run: " + e.getMessage());
@@ -500,13 +540,14 @@ public class EmulatorService implements Service {
             session.setLastError(null);
             session.clearState();
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("sessionId", sessionId);
-            result.put("programCounter", startAddress.toString());
-            result.put("message", "Emulator reset to initial state");
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("sessionId", sessionId);
+            data.put("programCounter", startAddress.toString());
+            data.put("message", "Emulator reset to initial state");
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             session.setLastError("Exception during reset: " + e.getMessage());
             return createErrorResult("Failed to reset emulator: " + e.getMessage());
@@ -539,12 +580,13 @@ public class EmulatorService implements Service {
             // Add the breakpoint to the emulator
             session.getEmulator().setBreakpoint(addr);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("address", address);
-            result.put("added", added);
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("address", address);
+            data.put("added", added);
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to set breakpoint: " + e.getMessage());
         }
@@ -576,12 +618,13 @@ public class EmulatorService implements Service {
             // Remove the breakpoint from the emulator
             session.getEmulator().clearBreakpoint(addr);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("address", address);
-            result.put("removed", removed);
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("address", address);
+            data.put("removed", removed);
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to clear breakpoint: " + e.getMessage());
         }
@@ -600,14 +643,15 @@ public class EmulatorService implements Service {
         }
 
         try {
-            // Get the breakpoints
-            Map<String, Object> result = new HashMap<>();
-            result.put("breakpoints", session.getBreakpoints().stream()
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("breakpoints", session.getBreakpoints().stream()
                     .map(Address::toString)
                     .toArray(String[]::new));
-            result.put("count", session.getBreakpoints().size());
+            data.put("count", session.getBreakpoints().size());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get breakpoints: " + e.getMessage());
         }
@@ -640,13 +684,14 @@ public class EmulatorService implements Service {
             // Add the breakpoint to the emulator
             session.getEmulator().setBreakpoint(addr);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("address", address);
-            result.put("condition", condition);
-            result.put("message", "Conditional breakpoint set");
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("address", address);
+            data.put("condition", condition);
+            data.put("message", "Conditional breakpoint set");
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to set conditional breakpoint: " + e.getMessage());
         }
@@ -665,12 +710,13 @@ public class EmulatorService implements Service {
         }
 
         try {
-            // Get the conditional breakpoints
-            Map<String, Object> result = new HashMap<>();
-            result.put("breakpoints", session.getConditionalBreakpoints());
-            result.put("count", session.getConditionalBreakpoints().size());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("breakpoints", session.getConditionalBreakpoints());
+            data.put("count", session.getConditionalBreakpoints().size());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get conditional breakpoints: " + e.getMessage());
         }
@@ -693,13 +739,13 @@ public class EmulatorService implements Service {
             // Provide the stdin data
             session.provideStdinData(data);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("message", "Stdin data provided successfully");
-            result.put("length", data.length());
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("message", "Stdin data provided successfully");
+            responseData.put("length", data.length());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(responseData);
         } catch (Exception e) {
             return createErrorResult("Failed to provide stdin data: " + e.getMessage());
         }
@@ -721,12 +767,13 @@ public class EmulatorService implements Service {
             // Get the stdout content
             String stdout = session.getStdoutContent();
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("content", stdout);
-            result.put("length", stdout.length());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("content", stdout);
+            data.put("length", stdout.length());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get stdout content: " + e.getMessage());
         }
@@ -748,12 +795,13 @@ public class EmulatorService implements Service {
             // Get the stderr content
             String stderr = session.getStderrContent();
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("content", stderr);
-            result.put("length", stderr.length());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("content", stderr);
+            data.put("length", stderr.length());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get stderr content: " + e.getMessage());
         }
@@ -790,13 +838,14 @@ public class EmulatorService implements Service {
             // Track the register write
             session.trackRegisterWrite(register, registerValue.longValue());
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("register", register);
-            result.put("value", "0x" + registerValue.toString(16));
-            result.put("decimal", registerValue.toString());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("register", register);
+            data.put("value", "0x" + registerValue.toString(16));
+            data.put("decimal", registerValue.toString());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to set register value: " + e.getMessage());
         }
@@ -821,13 +870,14 @@ public class EmulatorService implements Service {
             // Read the register value
             BigInteger registerValue = emulator.readRegister(register);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("register", register);
-            result.put("value", "0x" + registerValue.toString(16));
-            result.put("decimal", registerValue.toString());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("register", register);
+            data.put("value", "0x" + registerValue.toString(16));
+            data.put("decimal", registerValue.toString());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get register value: " + e.getMessage());
         }
@@ -891,12 +941,13 @@ public class EmulatorService implements Service {
                 }
             }
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("registers", registers);
-            result.put("count", registers.size());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("registers", registers);
+            data.put("count", registers.size());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get registers: " + e.getMessage());
         }
@@ -928,12 +979,13 @@ public class EmulatorService implements Service {
                 changes.add(change);
             }
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("changes", changes);
-            result.put("count", changes.size());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("changes", changes);
+            data.put("count", changes.size());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get register changes: " + e.getMessage());
         }
@@ -977,13 +1029,24 @@ public class EmulatorService implements Service {
             // Track the memory read
             session.trackMemoryRead(addr, bytes);
 
-            // Convert to hex string
-            return getResult(address, length, bytes);
+            // Get the memory data in the old format
+            Map<String, Object> memoryData = getResult(address, length, bytes);
+            
+            // Return a standardized success response
+            return createSuccessResult(memoryData);
         } catch (Exception e) {
             return createErrorResult("Failed to read memory: " + e.getMessage());
         }
     }
 
+    /**
+     * Creates a memory data result map without wrapping in success/error structure.
+     * 
+     * @param address the address as a string
+     * @param length the length of data
+     * @param bytes the byte array
+     * @return a map containing memory data
+     */
     private Map<String, Object> getResult(String address, int length, byte[] bytes) {
         StringBuilder hex = new StringBuilder();
         for (byte b : bytes) {
@@ -996,13 +1059,13 @@ public class EmulatorService implements Service {
             ascii.append(isPrintable(b) ? (char) b : '.');
         }
 
-        // Create the result
-        Map<String, Object> result = new HashMap<>();
-        result.put("address", address);
-        result.put("length", length);
-        result.put("hexValue", hex.toString());
-        result.put("asciiValue", ascii.toString());
-        return result;
+        // Create the data map
+        Map<String, Object> data = new HashMap<>();
+        data.put("address", address);
+        data.put("length", length);
+        data.put("hexValue", hex.toString());
+        data.put("asciiValue", ascii.toString());
+        return data;
     }
 
     /**
@@ -1048,12 +1111,13 @@ public class EmulatorService implements Service {
             // Track the memory write
             session.trackMemoryWrite(addr, bytes);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("address", address);
-            result.put("bytesWritten", bytes.length);
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("address", address);
+            data.put("bytesWritten", bytes.length);
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to write memory: " + e.getMessage());
         }
@@ -1106,13 +1170,14 @@ public class EmulatorService implements Service {
                 }
             }
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("writes", writes);
-            result.put("count", writes.size());
-            result.put("totalBytes", memoryWrites.size());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("writes", writes);
+            data.put("count", writes.size());
+            data.put("totalBytes", memoryWrites.size());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get memory writes: " + e.getMessage());
         }
@@ -1167,13 +1232,14 @@ public class EmulatorService implements Service {
                 }
             }
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("reads", reads);
-            result.put("count", reads.size());
-            result.put("totalBytes", memoryReads.size());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("reads", reads);
+            data.put("count", reads.size());
+            data.put("totalBytes", memoryReads.size());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get memory reads: " + e.getMessage());
         }
@@ -1196,12 +1262,13 @@ public class EmulatorService implements Service {
             // Set the tracking state
             session.setTrackMemoryReads(enable);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("tracking", enable);
-            result.put("message", "Memory read tracking " + (enable ? "enabled" : "disabled"));
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("tracking", enable);
+            data.put("message", "Memory read tracking " + (enable ? "enabled" : "disabled"));
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to set memory read tracking: " + e.getMessage());
         }
@@ -1224,12 +1291,13 @@ public class EmulatorService implements Service {
             // Set the tracking state
             session.setTrackStackChanges(enable);
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("tracking", enable);
-            result.put("message", "Stack change tracking " + (enable ? "enabled" : "disabled"));
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("tracking", enable);
+            data.put("message", "Stack change tracking " + (enable ? "enabled" : "disabled"));
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to set stack change tracking: " + e.getMessage());
         }
@@ -1251,12 +1319,13 @@ public class EmulatorService implements Service {
             // Get the stack trace
             List<Map<String, Object>> stackTrace = session.getStackTrace();
 
-            // Create the result
-            Map<String, Object> result = new HashMap<>();
-            result.put("stackTrace", stackTrace);
-            result.put("count", stackTrace.size());
+            // Create data for the success response
+            Map<String, Object> data = new HashMap<>();
+            data.put("stackTrace", stackTrace);
+            data.put("count", stackTrace.size());
 
-            return result;
+            // Return a standardized success response
+            return createSuccessResult(data);
         } catch (Exception e) {
             return createErrorResult("Failed to get stack trace: " + e.getMessage());
         }
@@ -1315,13 +1384,14 @@ public class EmulatorService implements Service {
                 currentProgram.getMemory().setBytes(addr, bytes);
                 int bytesWritten = bytes.length; // Assume all bytes were written
 
-                // Create the result
-                Map<String, Object> result = new HashMap<>();
-                result.put("bytesWritten", bytesWritten);
-                result.put("fromAddress", fromAddress);
-                result.put("toAddress", addr.add(bytesWritten - 1).toString());
+                // Create data for the success response
+                Map<String, Object> data = new HashMap<>();
+                data.put("bytesWritten", bytesWritten);
+                data.put("fromAddress", fromAddress);
+                data.put("toAddress", addr.add(bytesWritten - 1).toString());
 
-                return result;
+                // Return a standardized success response
+                return createSuccessResult(data);
             } catch (Exception e) {
                 return createErrorResult("Failed to write memory to program: " + e.getMessage());
             }

@@ -54,6 +54,55 @@ public class MemoryPatternSearchService implements Service {
     public void dispose() {
         // No resources to dispose
     }
+    
+    /**
+     * Creates a standardized error response with default error code (400)
+     * 
+     * @param errorMessage The error message
+     * @return Map representing the error response
+     */
+    private Map<String, Object> createErrorResponse(String errorMessage) {
+        return createErrorResponse(errorMessage, 400);
+    }
+    
+    /**
+     * Creates a standardized error response
+     * 
+     * @param errorMessage The error message
+     * @param errorCode Optional error code
+     * @return Map representing the error response
+     */
+    private Map<String, Object> createErrorResponse(String errorMessage, int errorCode) {
+        Map<String, Object> response = new HashMap<>();
+        Map<String, Object> errorDetails = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "error");
+        
+        // Error details
+        errorDetails.put("message", errorMessage);
+        errorDetails.put("code", errorCode);
+        
+        response.put("error", errorDetails);
+        
+        return response;
+    }
+    
+    /**
+     * Creates a standardized success response
+     * 
+     * @param data The data to include in the response
+     * @return Map representing the success response
+     */
+    private Map<String, Object> createSuccessResponse(Map<String, Object> data) {
+        Map<String, Object> response = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "success");
+        response.put("data", data);
+        
+        return response;
+    }
 
     /**
      * Search for a specific pattern of bytes in the program's memory.
@@ -65,9 +114,9 @@ public class MemoryPatternSearchService implements Service {
      * @param caseSensitive Whether the search is case-sensitive (relevant for ASCII/string searches)
      * @param maxResults Maximum number of results to return (0 for unlimited)
      * @param monitor Task monitor for tracking progress (can be null)
-     * @return List of addresses where the pattern was found
+     * @return Map containing the search results in a standardized format
      */
-    public List<Map<String, Object>> searchForPattern(
+    public Map<String, Object> searchForPattern(
             Program program, 
             String patternHex, 
             boolean searchExecutable, 
@@ -76,13 +125,17 @@ public class MemoryPatternSearchService implements Service {
             int maxResults,
             TaskMonitor monitor) {
         
-        List<Map<String, Object>> results = new ArrayList<>();
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
         
-        if (program == null || patternHex == null || patternHex.isEmpty()) {
-            return results;
+        if (patternHex == null || patternHex.isEmpty()) {
+            return createErrorResponse("Pattern cannot be empty");
         }
         
         try {
+            List<Map<String, Object>> results = new ArrayList<>();
+            
             // Normalize the pattern (remove spaces if any)
             patternHex = patternHex.replaceAll("\\s", "");
             
@@ -109,7 +162,18 @@ public class MemoryPatternSearchService implements Service {
             }
             
             if (searchSet.isEmpty()) {
-                return results; // No blocks to search
+                Map<String, Object> responseData = new HashMap<>();
+                responseData.put("matches", new ArrayList<>());
+                responseData.put("count", 0);
+                responseData.put("pattern", patternHex);
+                responseData.put("searchCriteria", Map.of(
+                    "searchExecutable", searchExecutable,
+                    "searchOnlyReadable", searchOnlyReadable,
+                    "caseSensitive", caseSensitive,
+                    "maxResults", maxResults
+                ));
+                
+                return createSuccessResponse(responseData);
             }
             
             // Set up progress monitoring
@@ -132,7 +196,20 @@ public class MemoryPatternSearchService implements Service {
                 while (startAddr.compareTo(endAddr) <= 0) {
                     // Check for cancellation
                     if (taskMonitor.isCancelled()) {
-                        return results;
+                        // Create data for success response with partial results
+                        Map<String, Object> responseData = new HashMap<>();
+                        responseData.put("matches", results);
+                        responseData.put("count", results.size());
+                        responseData.put("pattern", patternHex);
+                        responseData.put("cancelled", true);
+                        responseData.put("searchCriteria", Map.of(
+                            "searchExecutable", searchExecutable,
+                            "searchOnlyReadable", searchOnlyReadable,
+                            "caseSensitive", caseSensitive,
+                            "maxResults", maxResults
+                        ));
+                        
+                        return createSuccessResponse(responseData);
                     }
                     
                     // Find the next occurrence using Ghidra's findBytes API
@@ -170,7 +247,20 @@ public class MemoryPatternSearchService implements Service {
                     // Check if we've reached max results
                     if (maxResults > 0 && resultCount >= maxResults) {
                         taskMonitor.setMessage("Reached maximum requested results: " + maxResults);
-                        return results;
+                        
+                        // Create data for success response
+                        Map<String, Object> responseData = new HashMap<>();
+                        responseData.put("matches", results);
+                        responseData.put("count", results.size());
+                        responseData.put("pattern", patternHex);
+                        responseData.put("searchCriteria", Map.of(
+                            "searchExecutable", searchExecutable,
+                            "searchOnlyReadable", searchOnlyReadable,
+                            "caseSensitive", caseSensitive,
+                            "maxResults", maxResults
+                        ));
+                        
+                        return createSuccessResponse(responseData);
                     }
                     
                     // Move to position after this match for next search
@@ -183,10 +273,23 @@ public class MemoryPatternSearchService implements Service {
             }
             
             taskMonitor.setMessage("Search complete. Found " + resultCount + " matches.");
-            return results;
+            
+            // Create data for success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("matches", results);
+            responseData.put("count", results.size());
+            responseData.put("pattern", patternHex);
+            responseData.put("searchCriteria", Map.of(
+                "searchExecutable", searchExecutable,
+                "searchOnlyReadable", searchOnlyReadable,
+                "caseSensitive", caseSensitive,
+                "maxResults", maxResults
+            ));
+            
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(MemoryPatternSearchService.class, "Error searching for pattern", e);
-            return results;
+            return createErrorResponse("Error searching for pattern: " + e.getMessage());
         }
     }
     

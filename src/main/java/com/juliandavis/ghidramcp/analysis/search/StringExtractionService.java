@@ -58,6 +58,55 @@ public class StringExtractionService implements Service {
     public void dispose() {
         // No resources to dispose
     }
+    
+    /**
+     * Creates a standardized error response with default error code (400)
+     * 
+     * @param errorMessage The error message
+     * @return Map representing the error response
+     */
+    private Map<String, Object> createErrorResponse(String errorMessage) {
+        return createErrorResponse(errorMessage, 400);
+    }
+    
+    /**
+     * Creates a standardized error response
+     * 
+     * @param errorMessage The error message
+     * @param errorCode Optional error code
+     * @return Map representing the error response
+     */
+    private Map<String, Object> createErrorResponse(String errorMessage, int errorCode) {
+        Map<String, Object> response = new HashMap<>();
+        Map<String, Object> errorDetails = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "error");
+        
+        // Error details
+        errorDetails.put("message", errorMessage);
+        errorDetails.put("code", errorCode);
+        
+        response.put("error", errorDetails);
+        
+        return response;
+    }
+    
+    /**
+     * Creates a standardized success response
+     * 
+     * @param data The data to include in the response
+     * @return Map representing the success response
+     */
+    private Map<String, Object> createSuccessResponse(Map<String, Object> data) {
+        Map<String, Object> response = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "success");
+        response.put("data", data);
+        
+        return response;
+    }
 
     /**
      * String encoding types that can be searched for
@@ -81,7 +130,7 @@ public class StringExtractionService implements Service {
      * @param monitor              Task monitor for tracking progress (can be null)
      * @return List of maps containing string information
      */
-    public List<Map<String, Object>> extractStrings(
+    public Map<String, Object> extractStrings(
             Program program,
             int minLength,
             StringEncoding encoding,
@@ -91,12 +140,12 @@ public class StringExtractionService implements Service {
             int maxResults,
             TaskMonitor monitor) {
 
-        List<Map<String, Object>> results = new ArrayList<>();
-
         if (program == null || minLength < 1) {
             Msg.warn(StringExtractionService.class, "Invalid program or minimum length provided.");
-            return results;
+            return createErrorResponse("Invalid program or minimum length provided");
         }
+        
+        List<Map<String, Object>> results = new ArrayList<>();
 
         try {
             // Use a dummy monitor if none provided
@@ -112,7 +161,21 @@ public class StringExtractionService implements Service {
             // Add blocks based on permissions
             for (MemoryBlock block : memory.getBlocks()) {
                 if (taskMonitor.isCancelled()) {
-                    return results;
+                    // Create data for success response with partial results
+                    Map<String, Object> responseData = new HashMap<>();
+                    responseData.put("strings", results);
+                    responseData.put("count", results.size());
+                    responseData.put("minLength", minLength);
+                    responseData.put("encoding", encoding.toString());
+                    responseData.put("cancelled", true);
+                    responseData.put("searchCriteria", Map.of(
+                        "searchRWMemory", searchRWMemory,
+                        "searchROMemory", searchROMemory,
+                        "searchExecutableMemory", searchExecutableMemory,
+                        "maxResults", maxResults
+                    ));
+                    
+                    return createSuccessResponse(responseData);
                 }
                 boolean isReadWrite = block.isRead() && block.isWrite(); // Consider RW regardless of execute
                 boolean isReadOnly = block.isRead() && !block.isWrite();
@@ -139,7 +202,21 @@ public class StringExtractionService implements Service {
 
             if (searchSet.isEmpty()) {
                 Msg.info(StringExtractionService.class, "No memory blocks match the specified search criteria.");
-                return results;
+                
+                // Create empty result
+                Map<String, Object> responseData = new HashMap<>();
+                responseData.put("strings", new ArrayList<>());
+                responseData.put("count", 0);
+                responseData.put("minLength", minLength);
+                responseData.put("encoding", encoding.toString());
+                responseData.put("searchCriteria", Map.of(
+                    "searchRWMemory", searchRWMemory,
+                    "searchROMemory", searchROMemory,
+                    "searchExecutableMemory", searchExecutableMemory,
+                    "maxResults", maxResults
+                ));
+                
+                return createSuccessResponse(responseData);
             }
 
             taskMonitor.setMessage("Setting up StringSearcher...");
@@ -183,12 +260,25 @@ public class StringExtractionService implements Service {
             } else {
                 taskMonitor.setMessage("String search complete. Found " + results.size() + " strings.");
             }
-            return results;
+            
+            // Create data for success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("strings", results);
+            responseData.put("count", results.size());
+            responseData.put("minLength", minLength);
+            responseData.put("encoding", encoding.toString());
+            responseData.put("searchCriteria", Map.of(
+                "searchRWMemory", searchRWMemory,
+                "searchROMemory", searchROMemory,
+                "searchExecutableMemory", searchExecutableMemory,
+                "maxResults", maxResults
+            ));
+            
+            return createSuccessResponse(responseData);
 
         } catch (Exception e) {
             Msg.error(StringExtractionService.class, "Error extracting strings", e);
-            // Return potentially partial results
-            return results;
+            return createErrorResponse("Error extracting strings: " + e.getMessage());
         }
     }
 

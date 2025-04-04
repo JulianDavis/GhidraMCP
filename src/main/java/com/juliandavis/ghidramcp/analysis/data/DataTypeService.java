@@ -81,15 +81,15 @@ public class DataTypeService implements Service {
                 return createErrorResponse("Failed to create data at address " + addressStr);
             }
 
-            // Create success response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("address", addressStr);
-            response.put("dataType", dataTypeName);
-            response.put("size", data.getLength());
-            response.put("value", data.getDefaultValueRepresentation());
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("address", addressStr);
+            responseData.put("dataType", dataTypeName);
+            responseData.put("size", data.getLength());
+            responseData.put("value", data.getDefaultValueRepresentation());
 
-            return response;
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error creating primitive data type", e);
             return createErrorResponse("Error creating primitive data type: " + e.getMessage());
@@ -97,12 +97,51 @@ public class DataTypeService implements Service {
     }
 
     /**
-     * Helper method to get a map with error information
+     * Creates a standardized error response with default error code (400)
+     * 
+     * @param errorMessage The error message
+     * @return Map representing the error response
      */
-    private Map<String, Object> createErrorResponse(String message) {
+    private Map<String, Object> createErrorResponse(String errorMessage) {
+        return createErrorResponse(errorMessage, 400);
+    }
+    
+    /**
+     * Creates a standardized error response
+     * 
+     * @param errorMessage The error message
+     * @param errorCode Optional error code
+     * @return Map representing the error response
+     */
+    private Map<String, Object> createErrorResponse(String errorMessage, int errorCode) {
         Map<String, Object> response = new HashMap<>();
-        response.put("success", false);
-        response.put("error", message);
+        Map<String, Object> errorDetails = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "error");
+        
+        // Error details
+        errorDetails.put("message", errorMessage);
+        errorDetails.put("code", errorCode);
+        
+        response.put("error", errorDetails);
+        
+        return response;
+    }
+    
+    /**
+     * Creates a standardized success response
+     * 
+     * @param data The data to include in the response
+     * @return Map representing the success response
+     */
+    private Map<String, Object> createSuccessResponse(Map<String, Object> data) {
+        Map<String, Object> response = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "success");
+        response.put("data", data);
+        
         return response;
     }
 
@@ -223,20 +262,20 @@ public class DataTypeService implements Service {
                 return createErrorResponse("Failed to create string data at address " + addressStr);
             }
 
-            // Create success response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("address", addressStr);
-            response.put("stringType", stringType);
-            response.put("dataType", dataType.getName());
-            response.put("size", data.getLength());
-            response.put("value", data.getDefaultValueRepresentation());
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("address", addressStr);
+            responseData.put("stringType", stringType);
+            responseData.put("dataType", dataType.getName());
+            responseData.put("size", data.getLength());
+            responseData.put("value", data.getDefaultValueRepresentation());
 
             if (length > 0) {
-                response.put("fixedLength", length);
+                responseData.put("fixedLength", length);
             }
 
-            return response;
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error creating string data type", e);
             return createErrorResponse("Error creating string data type: " + e.getMessage());
@@ -281,16 +320,16 @@ public class DataTypeService implements Service {
                 return createErrorResponse("Failed to create array data at address " + addressStr);
             }
 
-            // Create success response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("address", addressStr);
-            response.put("elementType", elementTypeName);
-            response.put("numElements", numElements);
-            response.put("dataType", arrayDataType.getName());
-            response.put("size", data.getLength());
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("address", addressStr);
+            responseData.put("elementType", elementTypeName);
+            responseData.put("numElements", numElements);
+            responseData.put("dataType", arrayDataType.getName());
+            responseData.put("size", data.getLength());
 
-            return response;
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error creating array data type", e);
             return createErrorResponse("Error creating array data type: " + e.getMessage());
@@ -357,19 +396,21 @@ public class DataTypeService implements Service {
     }
 
     private Map<String, Object> getStructureInfoMap(StructureDataType structure) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("name", structure.getName());
-        response.put("id", structure.getUniversalID().getValue());
-        response.put("category", structure.getCategoryPath().getPath());
-        response.put("size", structure.getLength());
-        response.put("alignment", structure.getAlignment());
-        response.put("packed", structure.isPackingEnabled());
+        // Create data for the success response
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("name", structure.getName());
+        responseData.put("id", structure.getUniversalID().getValue());
+        responseData.put("category", structure.getCategoryPath().getPath());
+        responseData.put("size", structure.getLength());
+        responseData.put("alignment", structure.getAlignment());
+        responseData.put("packed", structure.isPackingEnabled());
 
         if (structure.getDescription() != null) {
-            response.put("description", structure.getDescription());
+            responseData.put("description", structure.getDescription());
         }
-        return response;
+        
+        // Return standardized success response
+        return createSuccessResponse(responseData);
     }
 
     /**
@@ -400,11 +441,9 @@ public class DataTypeService implements Service {
                 return createErrorResponse("Structure not found: " + structureName);
             }
 
-            if (!(structureType instanceof Structure)) {
+            if (!(structureType instanceof Structure structure)) {
                 return createErrorResponse("Data type is not a structure: " + structureName);
             }
-
-            Structure structure = (Structure) structureType;
 
             // Find the field data type
             DataType fieldType = findDataType(fieldTypeName);
@@ -443,26 +482,26 @@ public class DataTypeService implements Service {
                 }
             }
 
-            // Create success response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("structureName", structureName);
-            response.put("fieldName", fieldName);
-            response.put("fieldType", fieldTypeName);
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("structureName", structureName);
+            responseData.put("fieldName", fieldName);
+            responseData.put("fieldType", fieldTypeName);
 
             if (component != null) {
-                response.put("offset", component.getOffset());
-                response.put("length", component.getLength());
-                response.put("ordinal", component.getOrdinal());
+                responseData.put("offset", component.getOffset());
+                responseData.put("length", component.getLength());
+                responseData.put("ordinal", component.getOrdinal());
 
                 if (component.getComment() != null) {
-                    response.put("comment", component.getComment());
+                    responseData.put("comment", component.getComment());
                 }
             }
 
-            response.put("structureSize", structure.getLength());
+            responseData.put("structureSize", structure.getLength());
 
-            return response;
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error adding field to structure", e);
             return createErrorResponse("Error adding field to structure: " + e.getMessage());
@@ -506,12 +545,11 @@ public class DataTypeService implements Service {
                 return createErrorResponse("Failed to apply structure at address " + addressStr);
             }
 
-            // Create success response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("address", addressStr);
-            response.put("structureName", structureName);
-            response.put("size", data.getLength());
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("address", addressStr);
+            responseData.put("structureName", structureName);
+            responseData.put("size", data.getLength());
 
             // Get field information
             List<Map<String, Object>> fields = new ArrayList<>();
@@ -528,8 +566,10 @@ public class DataTypeService implements Service {
                 }
             }
 
-            response.put("fields", fields);
-            return response;
+            responseData.put("fields", fields);
+            
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error applying structure to memory", e);
             return createErrorResponse("Error applying structure: " + e.getMessage());
@@ -562,16 +602,18 @@ public class DataTypeService implements Service {
             // Delete the data type
             boolean deleted = program.getDataTypeManager().remove(dataType, TaskMonitor.DUMMY);
 
-            // Create response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", deleted);
-            response.put("dataTypeName", dataTypeName);
-
             if (!deleted) {
-                response.put("message", "Failed to delete data type. It may be in use or protected.");
+                // Return error response if deletion failed
+                return createErrorResponse("Failed to delete data type: " + dataTypeName + ". It may be in use or protected.");
             }
-
-            return response;
+            
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("dataTypeName", dataTypeName);
+            responseData.put("deleted", true);
+            
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error deleting data type", e);
             return createErrorResponse("Error deleting data type: " + e.getMessage());
@@ -643,23 +685,23 @@ public class DataTypeService implements Service {
                 results.add(dataTypeInfo);
             }
 
-            // Create paginated response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("dataTypes", results);
-            response.put("total", matchingDataTypes.size());
-            response.put("offset", offset);
-            response.put("limit", limit);
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("dataTypes", results);
+            responseData.put("total", matchingDataTypes.size());
+            responseData.put("offset", offset);
+            responseData.put("limit", limit);
 
             if (searchPattern != null && !searchPattern.isEmpty()) {
-                response.put("searchPattern", searchPattern);
+                responseData.put("searchPattern", searchPattern);
             }
 
             if (categoryPath != null && !categoryPath.isEmpty()) {
-                response.put("categoryPath", categoryPath);
+                responseData.put("categoryPath", categoryPath);
             }
-
-            return response;
+            
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error searching data types", e);
             return createErrorResponse("Error searching data types: " + e.getMessage());
@@ -679,8 +721,7 @@ public class DataTypeService implements Service {
         }
 
         // Add structure-specific information
-        if (dt instanceof Structure) {
-            Structure struct = (Structure) dt;
+        if (dt instanceof Structure struct) {
             dataTypeInfo.put("isStructure", true);
             dataTypeInfo.put("alignment", struct.getAlignment());
             dataTypeInfo.put("packed", struct.isPackingEnabled());
@@ -708,8 +749,7 @@ public class DataTypeService implements Service {
         }
 
         // Add enum-specific information
-        if (dt instanceof Enum) {
-            Enum enumType = (Enum) dt;
+        if (dt instanceof Enum enumType) {
             dataTypeInfo.put("isEnum", true);
             dataTypeInfo.put("valueCount", enumType.getCount());
 
@@ -776,17 +816,16 @@ public class DataTypeService implements Service {
                     enumDataType,
                     DataTypeConflictHandler.DEFAULT_HANDLER);
 
-            // Create success response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("name", addedEnum.getName());
-            response.put("id", addedEnum.getUniversalID().getValue());
-            response.put("category", addedEnum.getCategoryPath().getPath());
-            response.put("valueSize", addedEnum.getLength());
-            response.put("valueCount", addedEnum.getCount());
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("name", addedEnum.getName());
+            responseData.put("id", addedEnum.getUniversalID().getValue());
+            responseData.put("category", addedEnum.getCategoryPath().getPath());
+            responseData.put("valueSize", addedEnum.getLength());
+            responseData.put("valueCount", addedEnum.getCount());
 
             if (addedEnum.getDescription() != null) {
-                response.put("description", addedEnum.getDescription());
+                responseData.put("description", addedEnum.getDescription());
             }
 
             // Include enum values
@@ -794,9 +833,10 @@ public class DataTypeService implements Service {
             for (String name : addedEnum.getNames()) {
                 enumValues.put(name, addedEnum.getValue(name));
             }
-            response.put("values", enumValues);
+            responseData.put("values", enumValues);
 
-            return response;
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error creating enum data type", e);
             return createErrorResponse("Error creating enum: " + e.getMessage());
@@ -830,7 +870,7 @@ public class DataTypeService implements Service {
                 return createErrorResponse("Enum not found: " + enumName);
             }
 
-            if (!(enumType instanceof Enum)) {
+            if (!(enumType instanceof Enum enumDt)) {
                 return createErrorResponse("Data type is not an enum: " + enumName);
             }
 
@@ -842,7 +882,6 @@ public class DataTypeService implements Service {
 
             // Get the current value
             long value = data.getScalar(0).getUnsignedValue();
-            Enum enumDt = (Enum) enumType;
             String valueName = null;
 
             // Try to find the name for this value
@@ -853,18 +892,18 @@ public class DataTypeService implements Service {
                 }
             }
 
-            // Create success response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("address", addressStr);
-            response.put("enumName", enumName);
-            response.put("value", value);
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("address", addressStr);
+            responseData.put("enumName", enumName);
+            responseData.put("value", value);
 
             if (valueName != null) {
-                response.put("valueName", valueName);
+                responseData.put("valueName", valueName);
             }
 
-            return response;
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error applying enum to memory", e);
             return createErrorResponse("Error applying enum: " + e.getMessage());
@@ -905,17 +944,17 @@ public class DataTypeService implements Service {
                 dataTypes.add(dataTypeInfo);
             }
 
-            // Create response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("categoryPath", category.getCategoryPath().getPath());
-            response.put("name", category.getName());
-            response.put("subcategories", subcategories);
-            response.put("dataTypes", dataTypes);
-            response.put("subcategoryCount", subcategories.size());
-            response.put("dataTypeCount", dataTypes.size());
+            // Create data for the success response
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("categoryPath", category.getCategoryPath().getPath());
+            responseData.put("name", category.getName());
+            responseData.put("subcategories", subcategories);
+            responseData.put("dataTypes", dataTypes);
+            responseData.put("subcategoryCount", subcategories.size());
+            responseData.put("dataTypeCount", dataTypes.size());
 
-            return response;
+            // Return standardized success response
+            return createSuccessResponse(responseData);
         } catch (Exception e) {
             Msg.error(this, "Error getting data type category", e);
             return createErrorResponse("Error getting data type category: " + e.getMessage());

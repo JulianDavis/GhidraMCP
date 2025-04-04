@@ -5,8 +5,6 @@ import com.juliandavis.ghidramcp.analysis.memory.MemoryPatternSearchService;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -55,7 +53,7 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
                 int maxResults = parseInt(queryParams.get("maxResults"), 100);
 
                 // Search for pattern
-                List<Map<String, Object>> results = memoryPatternSearchService.searchForPattern(
+                Map<String, Object> result = memoryPatternSearchService.searchForPattern(
                         currentProgram,
                         pattern,
                         searchExecutable,
@@ -65,18 +63,8 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
                         TaskMonitor.DUMMY
                 );
 
-                Map<String, Object> response = new HashMap<>();
-                response.put("pattern", pattern);
-                response.put("results", results);
-                response.put("count", results.size());
-                response.put("searchCriteria", Map.of(
-                        "searchExecutable", searchExecutable,
-                        "searchOnlyReadable", searchOnlyReadable,
-                        "caseSensitive", caseSensitive,
-                        "maxResults", maxResults
-                ));
-
-                sendJsonResponse(exchange, response);
+                // Just pass through the standardized response from the service
+                sendJsonResponse(exchange, result);
             } else if (isPostRequest(exchange)) {
                 Map<String, String> params = parsePostParams(exchange);
                 String pattern = params.get("pattern");
@@ -93,7 +81,7 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
                 int maxResults = parseInt(params.get("maxResults"), 100);
 
                 // Search for pattern
-                List<Map<String, Object>> results = memoryPatternSearchService.searchForPattern(
+                Map<String, Object> result = memoryPatternSearchService.searchForPattern(
                         currentProgram,
                         pattern,
                         searchExecutable,
@@ -103,18 +91,8 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
                         TaskMonitor.DUMMY
                 );
 
-                Map<String, Object> response = new HashMap<>();
-                response.put("pattern", pattern);
-                response.put("results", results);
-                response.put("count", results.size());
-                response.put("searchCriteria", Map.of(
-                        "searchExecutable", searchExecutable,
-                        "searchOnlyReadable", searchOnlyReadable,
-                        "caseSensitive", caseSensitive,
-                        "maxResults", maxResults
-                ));
-
-                sendJsonResponse(exchange, response);
+                // Just pass through the standardized response from the service
+                sendJsonResponse(exchange, result);
             } else {
                 sendJsonResponse(exchange, createErrorResponse("Unsupported HTTP method: " + method));
             }

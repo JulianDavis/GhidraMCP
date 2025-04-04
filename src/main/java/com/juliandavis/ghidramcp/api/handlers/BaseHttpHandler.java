@@ -93,28 +93,51 @@ public abstract class BaseHttpHandler {
     }
     
     /**
-     * Create a standardized error response.
+     * Creates a standardized error response
      * 
-     * @param message the error message
-     * @return a map containing the error response
+     * @param errorMessage The error message
+     * @param errorCode Optional error code (default: 400)
+     * @return Map representing the error response
      */
-    protected Map<String, Object> createErrorResponse(String message) {
+    protected Map<String, Object> createErrorResponse(String errorMessage, int errorCode) {
         Map<String, Object> response = new HashMap<>();
-        response.put("success", false);
-        response.put("error", message);
+        Map<String, Object> errorDetails = new HashMap<>();
+        
+        // Standard top-level structure
+        response.put("status", "error");
+        
+        // Error details
+        errorDetails.put("message", errorMessage);
+        errorDetails.put("code", errorCode);
+        
+        response.put("error", errorDetails);
+        
         return response;
     }
-    
+
     /**
-     * Create a standardized success response.
+     * Creates a standardized error response with default error code (400)
      * 
-     * @param data the data to include in the response
-     * @return a map containing the success response
+     * @param errorMessage The error message
+     * @return Map representing the error response
+     */
+    protected Map<String, Object> createErrorResponse(String errorMessage) {
+        return createErrorResponse(errorMessage, 400);
+    }
+
+    /**
+     * Creates a standardized success response
+     * 
+     * @param data The data to include in the response
+     * @return Map representing the success response
      */
     protected Map<String, Object> createSuccessResponse(Object data) {
         Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
+        
+        // Standard top-level structure
+        response.put("status", "success");
         response.put("data", data);
+        
         return response;
     }
     
@@ -123,17 +146,29 @@ public abstract class BaseHttpHandler {
      * 
      * @param exchange the HTTP exchange
      * @param message the error message
+     * @param statusCode the HTTP status code
      * @throws IOException if an I/O error occurs
      */
-    protected void sendErrorResponse(HttpExchange exchange, String message) throws IOException {
-        Map<String, Object> error = createErrorResponse(message);
+    protected void sendErrorResponse(HttpExchange exchange, String message, int statusCode) throws IOException {
+        Map<String, Object> error = createErrorResponse(message, statusCode);
         
         byte[] responseBytes = plugin.getGson().toJson(error).getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(400, responseBytes.length);
+        exchange.sendResponseHeaders(statusCode, responseBytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(responseBytes);
         }
+    }
+    
+    /**
+     * Send an error response with default status code (400).
+     * 
+     * @param exchange the HTTP exchange
+     * @param message the error message
+     * @throws IOException if an I/O error occurs
+     */
+    protected void sendErrorResponse(HttpExchange exchange, String message) throws IOException {
+        sendErrorResponse(exchange, message, 400);
     }
     
     /**
@@ -143,14 +178,7 @@ public abstract class BaseHttpHandler {
      * @throws IOException if an I/O error occurs
      */
     protected void sendMethodNotAllowedResponse(HttpExchange exchange) throws IOException {
-        Map<String, Object> error = createErrorResponse("Method not allowed");
-        
-        byte[] responseBytes = plugin.getGson().toJson(error).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(405, responseBytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(responseBytes);
-        }
+        sendErrorResponse(exchange, "Method not allowed", 405);
     }
     
     /**

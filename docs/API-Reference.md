@@ -20,18 +20,40 @@ The API is organized into the following categories:
 
 ## Common Response Format
 
-All API responses follow a standard format:
+All API responses follow a standardized format to ensure consistent error handling and response structure:
+
+### Success Response Format
 
 ```json
 {
-  "status": "success" | "error",
-  "data": { ... },  // Present on success
-  "error": {        // Present on error
-    "message": "Error message",
-    "code": 123
+  "status": "success",
+  "data": {
+    // Response data specific to the endpoint
+    // This contains the actual result of the operation
   }
 }
 ```
+
+### Error Response Format
+
+```json
+{
+  "status": "error",
+  "error": {
+    "message": "Descriptive error message explaining what went wrong",
+    "code": 400 // HTTP-style error code (e.g., 400, 404, 500)
+  }
+}
+```
+
+This standardized format makes client integration simpler by providing:
+
+- Clear indication of success or failure via the `status` field
+- Consistent location for result data in the `data` field
+- Detailed error information with both human-readable messages and error codes
+- Predictable structure across all endpoints to simplify error handling logic
+
+All API endpoints in GhidraMCP strictly adhere to this response format.
 
 ## Program Information Endpoints
 
