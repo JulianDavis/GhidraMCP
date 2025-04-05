@@ -1,5 +1,6 @@
 package com.juliandavis.ghidramcp;
 
+import com.juliandavis.ghidramcp.services.initializers.*;
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.plugin.ProgramPlugin;
 import ghidra.framework.plugintool.PluginInfo;
@@ -14,14 +15,6 @@ import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.api.server.HttpServerManager;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.emulation.initializer.EmulatorServiceInitializer;
-import com.juliandavis.ghidramcp.services.initializers.DataTypeServiceInitializer;
-import com.juliandavis.ghidramcp.services.initializers.DecompileServiceInitializer;
-import com.juliandavis.ghidramcp.services.initializers.DisassembleServiceInitializer;
-import com.juliandavis.ghidramcp.services.initializers.FunctionXrefServiceInitializer;
-import com.juliandavis.ghidramcp.services.initializers.MemoryCrossReferenceServiceInitializer;
-import com.juliandavis.ghidramcp.services.initializers.MemoryPatternSearchServiceInitializer;
-import com.juliandavis.ghidramcp.services.initializers.ProgramInfoServiceInitializer;
-import com.juliandavis.ghidramcp.services.initializers.StringExtractionServiceInitializer;
 
 /**
  * GhidraMCP (Model Context Protocol) Plugin
@@ -104,7 +97,10 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         
         MemoryPatternSearchServiceInitializer memPatternInitializer = new MemoryPatternSearchServiceInitializer(this, serviceRegistry, endpointRegistry);
         memPatternInitializer.initialize();
-        
+
+        MemoryReadServiceInitializer memoryReadInitializer = new MemoryReadServiceInitializer(this, serviceRegistry, endpointRegistry);
+        memoryReadInitializer.initialize();
+
         // Search services
         StringExtractionServiceInitializer stringExtractionInitializer = new StringExtractionServiceInitializer(this, serviceRegistry, endpointRegistry);
         stringExtractionInitializer.initialize();
@@ -112,7 +108,7 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         // Program info services
         ProgramInfoServiceInitializer programInfoInitializer = new ProgramInfoServiceInitializer(this, serviceRegistry, endpointRegistry);
         programInfoInitializer.initialize();
-        
+
         // Function Xref services
         FunctionXrefServiceInitializer functionXrefInitializer = new FunctionXrefServiceInitializer(this, serviceRegistry, endpointRegistry);
         functionXrefInitializer.initialize();

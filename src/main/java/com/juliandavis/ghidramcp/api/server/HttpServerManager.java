@@ -48,7 +48,7 @@ public class HttpServerManager {
     public HttpServerManager(GhidraMCPPlugin plugin, int port) {
         this.plugin = plugin;
         this.port = port;
-        this.endpointRegistry = new EndpointRegistry(plugin);
+        this.endpointRegistry = plugin.getEndpointRegistry();
     }
     
     /**

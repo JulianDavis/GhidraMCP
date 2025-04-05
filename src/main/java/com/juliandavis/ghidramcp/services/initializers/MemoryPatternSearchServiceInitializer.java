@@ -36,7 +36,7 @@ public class MemoryPatternSearchServiceInitializer extends BaseServiceInitialize
     
     @Override
     protected String getServiceName() {
-        return "MemoryPatternSearchService";
+        return MemoryPatternSearchService.SERVICE_NAME;
     }
     
     /**

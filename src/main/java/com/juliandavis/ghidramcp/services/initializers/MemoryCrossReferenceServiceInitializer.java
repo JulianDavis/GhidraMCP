@@ -35,9 +35,7 @@ public class MemoryCrossReferenceServiceInitializer extends BaseServiceInitializ
     }
     
     @Override
-    protected String getServiceName() {
-        return "MemoryCrossReferenceService";
-    }
+    protected String getServiceName() { return MemoryCrossReferenceService.SERVICE_NAME; }
     
     /**
      * Static initialization method for backward compatibility.

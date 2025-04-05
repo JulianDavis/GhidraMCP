@@ -40,7 +40,5 @@ public class FunctionXrefServiceInitializer extends BaseServiceInitializer<Funct
     }
     
     @Override
-    protected String getServiceName() {
-        return "FunctionXrefService";
-    }
+    protected String getServiceName() { return FunctionXrefService.SERVICE_NAME; }
 }

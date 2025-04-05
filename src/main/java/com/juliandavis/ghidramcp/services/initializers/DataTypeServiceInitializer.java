@@ -40,9 +40,7 @@ public class DataTypeServiceInitializer extends BaseServiceInitializer<DataTypeS
     }
     
     @Override
-    protected String getServiceName() {
-        return "DataTypeService";
-    }
+    protected String getServiceName() { return DataTypeService.SERVICE_NAME; }
     
     /**
      * Static initialization method for backward compatibility.

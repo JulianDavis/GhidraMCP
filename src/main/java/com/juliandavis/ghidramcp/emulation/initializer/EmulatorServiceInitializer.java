@@ -31,9 +31,7 @@ public class EmulatorServiceInitializer extends BaseServiceInitializer<EmulatorS
     
     @Override
     protected EmulatorHttpHandler createHttpHandler() {
-        EmulatorHttpHandler handler = new EmulatorHttpHandler(plugin);
-        handler.registerEndpoints();
-        return handler;
+        return new EmulatorHttpHandler(plugin);
     }
     
     @Override

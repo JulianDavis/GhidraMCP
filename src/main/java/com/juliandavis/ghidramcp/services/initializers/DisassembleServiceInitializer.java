@@ -41,6 +41,6 @@ public class DisassembleServiceInitializer extends BaseServiceInitializer<Disass
     
     @Override
     protected String getServiceName() {
-        return "DisassembleService";
+        return DisassembleService.SERVICE_NAME;
     }
 }

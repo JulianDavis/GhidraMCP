@@ -20,7 +20,7 @@ import java.util.*;
  */
 public class DataTypeService implements Service {
 
-    private static final String SERVICE_NAME = "DataTypeService";
+    public static final String SERVICE_NAME = "DataTypeService";
     private Program program;
 
     /**
@@ -98,7 +98,7 @@ public class DataTypeService implements Service {
 
     /**
      * Creates a standardized error response with default error code (400)
-     * 
+     *
      * @param errorMessage The error message
      * @return Map representing the error response
      */

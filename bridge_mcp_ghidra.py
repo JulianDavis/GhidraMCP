@@ -24,8 +24,7 @@ def extract_response_data(response: Dict[str, Any], result_type: Type[T], error_
     """
     Extract data from a standardized response or the raw response itself.
     
-    This handles both the new standardized response format (with status/data/error)
-    and the old format (with success/error fields directly).
+    This handles the standardized response format (with status/data/error).
     
     Args:
         response: The response dictionary
@@ -46,16 +45,11 @@ def extract_response_data(response: Dict[str, Any], result_type: Type[T], error_
     if "status" in response:
         if response.get("status") == "success":
             # For success responses, use the result_type's from_dict method
-            return result_type.from_dict(response)
-        else:
-            # For error responses, use the error_handler
-            return error_handler(response)
-    
-    # Check if this is the old format with success field
-    if "success" in response:
-        if response.get("success", False):
-            # For success responses, use the result_type's from_dict method
-            return result_type.from_dict(response)
+            if "data" in response:
+                return result_type.from_dict(response)
+            else:
+                logger.warning(f"Success response missing 'data' field: {response}")
+                return result_type.from_dict(response)
         else:
             # For error responses, use the error_handler
             return error_handler(response)
@@ -329,6 +323,9 @@ def emulator_get_registers() -> Dict[str, Any]:
     response = safe_get("emulator/getRegisters")
     
     if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
         return response
     else:
         # Convert string response to dict for consistency
@@ -356,6 +353,9 @@ def emulator_read_memory(address: str, length: int = 16) -> Dict[str, Any]:
     })
     
     if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
         return response
     else:
         # Convert string response to dict for consistency
@@ -381,6 +381,9 @@ def emulator_write_memory(address: str, bytes_hex: str) -> Dict[str, Any]:
     })
     
     if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
         return response
     else:
         # Convert string response to dict for consistency
@@ -645,7 +648,15 @@ def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Dict[str, Any]
         if response.ok:
             try:
                 # Try to parse as JSON first
-                return response.json()
+                json_response = response.json()
+                
+                # If the response isn't already in the standardized format, wrap it
+                if "status" not in json_response:
+                    return {
+                        "status": "success",
+                        "data": json_response
+                    }
+                return json_response
             except json.JSONDecodeError:
                 # Fall back to text response if not JSON
                 text_response = response.text.strip()
@@ -715,19 +726,21 @@ def list_methods(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     
     # Handle the response appropriately
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
-            return data.get("items", [])
-        elif response.get("success") is True:
-            return response.get("items", [])
+            if "functions" in data:
+                return data.get("functions", [])
+            elif "items" in data:
+                return data.get("items", [])
+            return []
         elif response.get("error"):
             logger.error(f"Error listing methods: {response.get('error')}")
             return []
     
     # Fallback for unexpected response format
     logger.warning(f"Unexpected response format from methods endpoint")
-    return response if isinstance(response, list) else []
+    return []
 
 @mcp.tool()
 def list_classes(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -745,18 +758,20 @@ def list_classes(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     
     # Handle the response appropriately
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
-            return data.get("items", [])
-        elif response.get("success") is True:
-            return response.get("items", [])
+            if "classes" in data:
+                return data.get("classes", [])
+            elif "items" in data:
+                return data.get("items", [])
+            return []
         elif response.get("error"):
             logger.error(f"Error listing classes: {response.get('error')}")
             return []
     
     logger.warning(f"Unexpected response format from classes endpoint")
-    return response if isinstance(response, list) else []
+    return []
 
 @mcp.tool()
 def decompile_function(name: str) -> Dict[str, Any]:
@@ -772,26 +787,48 @@ def decompile_function(name: str) -> Dict[str, Any]:
     response = safe_post("decompile", name)
     
     if isinstance(response, dict):
+        # Check for the standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return {
+                "function": name,
+                "decompiled": data.get("decompiled", ""),
+                "success": True
+            }
+        elif "error" in response:
+            return {
+                "function": name,
+                "decompiled": f"Error: {response.get('error', {}).get('message', 'Unknown error')}",
+                "success": False
+            }
         return response
     else:
         # Convert string response to dict for consistency
-        return {"function": name, "decompiled": response, "success": not response.startswith("Error")}
+        return {
+            "function": name,
+            "decompiled": response if isinstance(response, str) else "Unknown response format",
+            "success": not (isinstance(response, str) and response.startswith("Error"))
+        }
 
 @mcp.tool()
 def rename_function(old_name: str, new_name: str) -> Dict[str, Any]:
     """
     Rename a function by its current name to a new user-defined name.
-    
+
     Args:
         old_name: Current function name
         new_name: New function name
-        
+
     Returns:
         Dictionary with success status and message
     """
     response = safe_post("renameFunction", {"oldName": old_name, "newName": new_name})
-    
+
     if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data
         return response
     else:
         # Convert string response to dict for consistency
@@ -842,18 +879,20 @@ def list_segments(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     response = safe_get("segments", {"offset": offset, "limit": limit})
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
-            return data.get("items", [])
-        elif response.get("success") is True:
-            return response.get("items", [])
+            if "segments" in data:
+                return data.get("segments", [])
+            elif "items" in data:
+                return data.get("items", [])
+            return []
         elif response.get("error"):
             logger.error(f"Error listing segments: {response.get('error')}")
             return []
     
     logger.warning(f"Unexpected response format from segments endpoint")
-    return response if isinstance(response, list) else []
+    return []
 
 @mcp.tool()
 def list_imports(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -870,18 +909,20 @@ def list_imports(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     response = safe_get("imports", {"offset": offset, "limit": limit})
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
-            return data.get("items", [])
-        elif response.get("success") is True:
-            return response.get("items", [])
+            if "imports" in data:
+                return data.get("imports", [])
+            elif "items" in data:
+                return data.get("items", [])
+            return []
         elif response.get("error"):
             logger.error(f"Error listing imports: {response.get('error')}")
             return []
     
     logger.warning(f"Unexpected response format from imports endpoint")
-    return response if isinstance(response, list) else []
+    return []
 
 @mcp.tool()
 def list_exports(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -898,18 +939,20 @@ def list_exports(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     response = safe_get("exports", {"offset": offset, "limit": limit})
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
-            return data.get("items", [])
-        elif response.get("success") is True:
-            return response.get("items", [])
+            if "exports" in data:
+                return data.get("exports", [])
+            elif "items" in data:
+                return data.get("items", [])
+            return []
         elif response.get("error"):
             logger.error(f"Error listing exports: {response.get('error')}")
             return []
     
     logger.warning(f"Unexpected response format from exports endpoint")
-    return response if isinstance(response, list) else []
+    return []
 
 @mcp.tool()
 def list_namespaces(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -926,18 +969,20 @@ def list_namespaces(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     response = safe_get("namespaces", {"offset": offset, "limit": limit})
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
-            return data.get("items", [])
-        elif response.get("success") is True:
-            return response.get("items", [])
+            if "namespaces" in data:
+                return data.get("namespaces", [])
+            elif "items" in data:
+                return data.get("items", [])
+            return []
         elif response.get("error"):
             logger.error(f"Error listing namespaces: {response.get('error')}")
             return []
     
     logger.warning(f"Unexpected response format from namespaces endpoint")
-    return response if isinstance(response, list) else []
+    return []
 
 @mcp.tool()
 def list_data_items(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -954,18 +999,18 @@ def list_data_items(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     response = safe_get("data", {"offset": offset, "limit": limit})
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
-            return data.get("items", [])
-        elif response.get("success") is True:
-            return response.get("items", [])
+            if "items" in data:
+                return data.get("items", [])
+            return []
         elif response.get("error"):
             logger.error(f"Error listing data items: {response.get('error')}")
             return []
     
     logger.warning(f"Unexpected response format from data endpoint")
-    return response if isinstance(response, list) else []
+    return []
 
 @mcp.tool()
 def search_functions_by_name(query: str, offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -987,18 +1032,20 @@ def search_functions_by_name(query: str, offset: int = 0, limit: int = 100) -> L
     response = safe_get("searchFunctions", {"query": query, "offset": offset, "limit": limit})
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
-            return data.get("items", [])
-        elif response.get("success") is True:
-            return response.get("items", [])
+            if "functions" in data:
+                return data.get("functions", [])
+            elif "items" in data:
+                return data.get("items", [])
+            return []
         elif response.get("error"):
             logger.error(f"Error searching functions: {response.get('error')}")
             return []
     
     logger.warning(f"Unexpected response format from searchFunctions endpoint")
-    return response if isinstance(response, list) else []
+    return []
         
 @mcp.tool()
 def get_function_stats(continuation_token: str = "", limit: int = 5000) -> Dict[str, Any]:
@@ -1026,19 +1073,13 @@ def get_function_stats(continuation_token: str = "", limit: int = 5000) -> Dict[
     })
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
             return {
-                "stats": data.get("functionStats", {}),
+                "stats": data.get("stats", {}),
                 "isComplete": data.get("isComplete", False),
                 "continuationToken": data.get("continuationToken", "")
-            }
-        elif response.get("success") is True:
-            return {
-                "stats": response.get("functionStats", {}),
-                "isComplete": response.get("isComplete", False),
-                "continuationToken": response.get("continuationToken", "")
             }
     
     logger.error("Failed to get function statistics")
@@ -1079,7 +1120,7 @@ def get_symbol_stats(continuation_token: str = "", limit: int = 5000, symbol_typ
     response = safe_get("programInfo/symbolStats", params)
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
             return {
@@ -1087,13 +1128,6 @@ def get_symbol_stats(continuation_token: str = "", limit: int = 5000, symbol_typ
                 "items": data.get("items", []),
                 "isComplete": data.get("isComplete", False),
                 "continuationToken": data.get("continuationToken", "")
-            }
-        elif response.get("success") is True:
-            return {
-                "stats": response.get("symbolStats", {}),
-                "items": response.get("items", []),
-                "isComplete": response.get("isComplete", False),
-                "continuationToken": response.get("continuationToken", "")
             }
     
     logger.error("Failed to get symbol statistics")
@@ -1130,7 +1164,7 @@ def get_data_type_stats(continuation_token: str = "", limit: int = 5000) -> Dict
     })
     
     if isinstance(response, dict):
-        # Check for the new standardized format with nested data
+        # Check for the standardized format with nested data
         if "status" in response and response.get("status") == "success" and "data" in response:
             data = response.get("data", {})
             return {
@@ -1138,13 +1172,6 @@ def get_data_type_stats(continuation_token: str = "", limit: int = 5000) -> Dict
                 "items": data.get("items", []),
                 "isComplete": data.get("isComplete", False),
                 "continuationToken": data.get("continuationToken", "")
-            }
-        elif response.get("success") is True:
-            return {
-                "stats": response.get("dataTypeStats", {}),
-                "items": response.get("items", []),
-                "isComplete": response.get("isComplete", False),
-                "continuationToken": response.get("continuationToken", "")
             }
     
     logger.error("Failed to get data type statistics")
@@ -1296,11 +1323,16 @@ def get_program_info(detail_level: str = "basic") -> Dict[str, Any]:
         logger.error(error_msg, exc_info=True)
         return {}
     
-    if not isinstance(response, dict) or not response.get("success", False):
+    if not isinstance(response, dict):
+        logger.warning(f"Unexpected response format from programInfo endpoint: not a dictionary")
+        return {}
+    
+    # Check for standardized response format
+    if "status" in response and response.get("status") == "success" and "data" in response:
+        basic_info = response.get("data", {})
+    else:
         logger.warning(f"Unexpected response format from programInfo endpoint")
         return {}
-        
-    basic_info = response.get("programInfo", {})
     
     # If basic info requested, return as is
     if detail_level.lower() != "full":
@@ -1310,7 +1342,7 @@ def get_program_info(detail_level: str = "basic") -> Dict[str, Any]:
     try:
         # Get function stats
         function_stats = get_function_stats(limit=1000)
-        if function_stats.get("stats"):
+        if isinstance(function_stats, dict) and "stats" in function_stats:
             # Update the function stats in the result
             if "functions" in basic_info:
                 basic_info["functions"].update(function_stats.get("stats", {}))
@@ -1333,7 +1365,141 @@ def get_program_info(detail_level: str = "basic") -> Dict[str, Any]:
         logger.error(f"Error fetching additional program info: {str(e)}")
         # Return what we have so far
         return basic_info
-        
+
+@mcp.tool()
+def memory_read(address: str, length: int = 16) -> Dict[str, Any]:
+    """
+    Read bytes from a specified memory address directly (no emulator required).
+
+    Args:
+        address: The address to read from (e.g., "0x1400")
+        length: The number of bytes to read (default: 16, max: 4096)
+
+    Returns:
+        Dictionary containing the memory data, including:
+        - address: The starting address
+        - length: Number of bytes read
+        - hexValue: Hex representation of the bytes
+        - asciiValue: ASCII representation of the bytes
+        - block: Information about the memory block containing this address
+    """
+    response = safe_get("memory/read", {
+        "address": address,
+        "length": str(length)
+    })
+
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def memory_get_block_info(address: str) -> Dict[str, Any]:
+    """
+    Gets information about a memory block containing the specified address.
+
+    Args:
+        address: The address to query (e.g., "0x1400")
+
+    Returns:
+        Dictionary containing information about the memory block, including:
+        - name: Block name
+        - start: Starting address
+        - end: Ending address
+        - size: Block size in bytes
+        - permissions: Read/write/execute permissions string (e.g., "rwx")
+        - initialized: Whether the block is initialized
+        - source: Block source type
+    """
+    response = safe_get("memory/blockInfo", {
+        "address": address
+    })
+
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def memory_list_blocks() -> Dict[str, Any]:
+    """
+    Lists all memory blocks in the program.
+
+    Returns:
+        Dictionary containing information about all memory blocks, including:
+        - blocks: Array of block objects
+        - count: Number of blocks
+        - totalSize: Total memory size in bytes
+    """
+    response = safe_get("memory/listBlocks")
+
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def memory_is_address_valid(address: str) -> Dict[str, Any]:
+    """
+    Checks if an address is valid and initialized in the program's memory.
+
+    Args:
+        address: The address to check (e.g., "0x1400")
+
+    Returns:
+        Dictionary containing the result of the check, including:
+        - address: The queried address
+        - valid: Whether the address is in a valid memory block
+        - initialized: Whether the address contains initialized memory
+        - blockName: Name of the containing block (if valid)
+    """
+    response = safe_get("memory/isValid", {
+        "address": address
+    })
+
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def memory_get_address_spaces() -> Dict[str, Any]:
+    """
+    Gets the address space information for the program.
+
+    Returns:
+        Dictionary containing information about all address spaces, including:
+        - spaces: Array of address space objects
+        - count: Number of address spaces
+        - defaultSpace: Name of the default address space
+    """
+    response = safe_get("memory/addressSpaces")
+
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+
 @mcp.tool()
 def get_references(address: str) -> Union[ReferenceResult, ErrorResult]:
     """
@@ -1453,6 +1619,18 @@ def set_comment(address: str, comment: str, comment_type: int = 3) -> Dict[str, 
     })
     
     if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            data["success"] = True
+            return data
+        elif "status" in response and response.get("status") == "error":
+            error = response.get("error", {})
+            return {
+                "success": False,
+                "error": error.get("message", "Unknown error"),
+                "address": address
+            }
         return response
     else:
         # Convert string response to dict for consistency
@@ -1461,9 +1639,6 @@ def set_comment(address: str, comment: str, comment_type: int = 3) -> Dict[str, 
             "address": address,
             "message": response if isinstance(response, str) else "Unknown error"
         }
-        
-    logger.warning(f"Unexpected response format from programInfo endpoint")
-    return {}
 
 
 if __name__ == "__main__":

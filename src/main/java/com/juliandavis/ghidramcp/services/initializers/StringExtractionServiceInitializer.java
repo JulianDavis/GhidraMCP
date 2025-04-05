@@ -36,7 +36,7 @@ public class StringExtractionServiceInitializer extends BaseServiceInitializer<S
     
     @Override
     protected String getServiceName() {
-        return "StringExtractionService";
+        return StringExtractionService.SERVICE_NAME;
     }
     
     /**

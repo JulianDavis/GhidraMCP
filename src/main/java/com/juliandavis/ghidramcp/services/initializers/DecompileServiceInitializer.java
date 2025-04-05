@@ -41,6 +41,6 @@ public class DecompileServiceInitializer extends BaseServiceInitializer<Decompil
     
     @Override
     protected String getServiceName() {
-        return "DecompileService";
+        return DecompileService.SERVICE_NAME;
     }
 }
