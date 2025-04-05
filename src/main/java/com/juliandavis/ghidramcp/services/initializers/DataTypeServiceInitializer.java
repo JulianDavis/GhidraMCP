@@ -1,7 +1,7 @@
-package com.juliandavis.ghidramcp.analysis.data.initializer;
+package com.juliandavis.ghidramcp.services.initializers;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
-import com.juliandavis.ghidramcp.analysis.data.DataTypeService;
+import com.juliandavis.ghidramcp.services.DataTypeService;
 import com.juliandavis.ghidramcp.api.handlers.DataTypeHttpHandler;
 import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;

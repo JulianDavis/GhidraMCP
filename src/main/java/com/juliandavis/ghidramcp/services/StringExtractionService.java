@@ -1,4 +1,4 @@
-package com.juliandavis.ghidramcp.analysis.search;
+package com.juliandavis.ghidramcp.services;
 
 import com.juliandavis.ghidramcp.core.service.Service;
 

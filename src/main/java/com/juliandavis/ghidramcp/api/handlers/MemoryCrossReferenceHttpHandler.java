@@ -1,7 +1,7 @@
 package com.juliandavis.ghidramcp.api.handlers;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
-import com.juliandavis.ghidramcp.analysis.memory.MemoryCrossReferenceService;
+import com.juliandavis.ghidramcp.services.MemoryCrossReferenceService;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 

@@ -1,42 +1,42 @@
-package com.juliandavis.ghidramcp.analysis.search.initializer;
+package com.juliandavis.ghidramcp.services.initializers;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
-import com.juliandavis.ghidramcp.analysis.search.StringExtractionService;
-import com.juliandavis.ghidramcp.api.handlers.StringExtractionHttpHandler;
+import com.juliandavis.ghidramcp.services.MemoryPatternSearchService;
+import com.juliandavis.ghidramcp.api.handlers.MemoryPatternSearchHttpHandler;
 import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.core.service.initializer.BaseServiceInitializer;
 
 /**
- * Initializer for the StringExtractionService.
+ * Initializer for the MemoryPatternSearchService.
  * Registers the service with the ServiceRegistry and sets up the HTTP handler.
  */
-public class StringExtractionServiceInitializer extends BaseServiceInitializer<StringExtractionService, StringExtractionHttpHandler> {
+public class MemoryPatternSearchServiceInitializer extends BaseServiceInitializer<MemoryPatternSearchService, MemoryPatternSearchHttpHandler> {
 
     /**
-     * Creates a new StringExtractionServiceInitializer.
+     * Creates a new MemoryPatternSearchServiceInitializer.
      * 
      * @param plugin The GhidraMCP plugin instance
      * @param serviceRegistry The service registry
      * @param endpointRegistry The endpoint registry
      */
-    public StringExtractionServiceInitializer(GhidraMCPPlugin plugin, ServiceRegistry serviceRegistry, EndpointRegistry endpointRegistry) {
+    public MemoryPatternSearchServiceInitializer(GhidraMCPPlugin plugin, ServiceRegistry serviceRegistry, EndpointRegistry endpointRegistry) {
         super(plugin, serviceRegistry, endpointRegistry);
     }
     
     @Override
-    protected StringExtractionService createService() {
-        return new StringExtractionService();
+    protected MemoryPatternSearchService createService() {
+        return new MemoryPatternSearchService();
     }
     
     @Override
-    protected StringExtractionHttpHandler createHttpHandler() {
-        return new StringExtractionHttpHandler(plugin);
+    protected MemoryPatternSearchHttpHandler createHttpHandler() {
+        return new MemoryPatternSearchHttpHandler(plugin);
     }
     
     @Override
     protected String getServiceName() {
-        return "StringExtractionService";
+        return "MemoryPatternSearchService";
     }
     
     /**
@@ -48,7 +48,7 @@ public class StringExtractionServiceInitializer extends BaseServiceInitializer<S
      */
     public static void initialize(ServiceRegistry serviceRegistry, EndpointRegistry endpointRegistry,
                                 GhidraMCPPlugin plugin) {
-        StringExtractionServiceInitializer initializer = new StringExtractionServiceInitializer(
+        MemoryPatternSearchServiceInitializer initializer = new MemoryPatternSearchServiceInitializer(
             plugin, serviceRegistry, endpointRegistry);
         initializer.initialize();
     }

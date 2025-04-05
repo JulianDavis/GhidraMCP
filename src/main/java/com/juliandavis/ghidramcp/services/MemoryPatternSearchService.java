@@ -1,4 +1,4 @@
-package com.juliandavis.ghidramcp.analysis.memory;
+package com.juliandavis.ghidramcp.services;
 
 import com.juliandavis.ghidramcp.core.service.Service;
 import ghidra.program.model.address.Address;

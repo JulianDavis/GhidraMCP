@@ -1,7 +1,7 @@
-package com.juliandavis.ghidramcp.analysis.memory.initializer;
+package com.juliandavis.ghidramcp.services.initializers;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
-import com.juliandavis.ghidramcp.analysis.memory.MemoryCrossReferenceService;
+import com.juliandavis.ghidramcp.services.MemoryCrossReferenceService;
 import com.juliandavis.ghidramcp.api.handlers.MemoryCrossReferenceHttpHandler;
 import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;

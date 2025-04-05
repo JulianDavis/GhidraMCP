@@ -14,10 +14,14 @@ import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.api.server.HttpServerManager;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.emulation.initializer.EmulatorServiceInitializer;
-import com.juliandavis.ghidramcp.analysis.data.initializer.DataTypeServiceInitializer;
-import com.juliandavis.ghidramcp.analysis.memory.initializer.MemoryCrossReferenceServiceInitializer;
-import com.juliandavis.ghidramcp.analysis.memory.initializer.MemoryPatternSearchServiceInitializer;
-import com.juliandavis.ghidramcp.analysis.search.initializer.StringExtractionServiceInitializer;
+import com.juliandavis.ghidramcp.services.initializers.DataTypeServiceInitializer;
+import com.juliandavis.ghidramcp.services.initializers.DecompileServiceInitializer;
+import com.juliandavis.ghidramcp.services.initializers.DisassembleServiceInitializer;
+import com.juliandavis.ghidramcp.services.initializers.FunctionXrefServiceInitializer;
+import com.juliandavis.ghidramcp.services.initializers.MemoryCrossReferenceServiceInitializer;
+import com.juliandavis.ghidramcp.services.initializers.MemoryPatternSearchServiceInitializer;
+import com.juliandavis.ghidramcp.services.initializers.ProgramInfoServiceInitializer;
+import com.juliandavis.ghidramcp.services.initializers.StringExtractionServiceInitializer;
 
 /**
  * GhidraMCP (Model Context Protocol) Plugin
@@ -82,6 +86,14 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         DataTypeServiceInitializer dataTypeInitializer = new DataTypeServiceInitializer(this, serviceRegistry, endpointRegistry);
         dataTypeInitializer.initialize();
         
+        // Decompile services
+        DecompileServiceInitializer decompileInitializer = new DecompileServiceInitializer(this, serviceRegistry, endpointRegistry);
+        decompileInitializer.initialize();
+        
+        // Disassemble services
+        DisassembleServiceInitializer disassembleInitializer = new DisassembleServiceInitializer(this, serviceRegistry, endpointRegistry);
+        disassembleInitializer.initialize();
+        
         // Emulation services
         EmulatorServiceInitializer emulatorInitializer = new EmulatorServiceInitializer(this, serviceRegistry, endpointRegistry);
         emulatorInitializer.initialize();
@@ -97,7 +109,13 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         StringExtractionServiceInitializer stringExtractionInitializer = new StringExtractionServiceInitializer(this, serviceRegistry, endpointRegistry);
         stringExtractionInitializer.initialize();
         
-        // TODO: Add ProgramInfoService initializer once implemented
+        // Program info services
+        ProgramInfoServiceInitializer programInfoInitializer = new ProgramInfoServiceInitializer(this, serviceRegistry, endpointRegistry);
+        programInfoInitializer.initialize();
+        
+        // Function Xref services
+        FunctionXrefServiceInitializer functionXrefInitializer = new FunctionXrefServiceInitializer(this, serviceRegistry, endpointRegistry);
+        functionXrefInitializer.initialize();
     }
     
     private void startServer() {

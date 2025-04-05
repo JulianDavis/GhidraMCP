@@ -2,8 +2,10 @@ from mcp.server.fastmcp import FastMCP
 import requests
 import json
 import logging
-from typing import Dict, List, Union, Any, Optional
+from typing import Dict, List, Union, Any, Optional, TypeVar, Generic, Callable, Type, cast
 from result_objects import *
+
+T = TypeVar('T')
 
 # Configure logging
 logging.basicConfig(
@@ -17,6 +19,53 @@ ghidra_server_url = "http://localhost:8080"
 DEFAULT_TIMEOUT = 100  # Increased timeout for large binaries
 
 mcp = FastMCP("ghidra-mcp", request_timeout=300)  # 5 minute timeout for MCP requests
+
+def extract_response_data(response: Dict[str, Any], result_type: Type[T], error_handler: Callable = None) -> Union[T, ErrorResult]:
+    """
+    Extract data from a standardized response or the raw response itself.
+    
+    This handles both the new standardized response format (with status/data/error)
+    and the old format (with success/error fields directly).
+    
+    Args:
+        response: The response dictionary
+        result_type: The type to create from the response data
+        error_handler: Optional function to create an error result (defaults to ErrorResult.from_dict)
+        
+    Returns:
+        The appropriate result object (success or error)
+    """
+    if error_handler is None:
+        error_handler = ErrorResult.from_dict
+        
+    # Check if this is already an error
+    if isinstance(response, ErrorResult):
+        return response
+    
+    # Check if this is a standardized response with status field
+    if "status" in response:
+        if response.get("status") == "success":
+            # For success responses, use the result_type's from_dict method
+            return result_type.from_dict(response)
+        else:
+            # For error responses, use the error_handler
+            return error_handler(response)
+    
+    # Check if this is the old format with success field
+    if "success" in response:
+        if response.get("success", False):
+            # For success responses, use the result_type's from_dict method
+            return result_type.from_dict(response)
+        else:
+            # For error responses, use the error_handler
+            return error_handler(response)
+    
+    # If we can't determine the format, try to parse it as a success result
+    try:
+        return result_type.from_dict(response)
+    except Exception as e:
+        logger.error(f"Failed to parse response: {e}")
+        return ErrorResult.from_string(f"Failed to parse response: {str(e)}")
 
 # ----------------------------------------------------------------------------------
 # Emulator functions
@@ -39,18 +88,14 @@ def emulator_initialize(address: str, write_tracking: bool = True) -> Union[Emul
         "writeTracking": str(write_tracking).lower()
     })
     
-    if response.get("success", False):
-        # If this is a text response, convert it to a session object
-        if response.get("type") == "text_response":
-            # This would be unusual, but handle it just in case
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('text', '')}"
-            )
-        # Otherwise, create a proper EmulatorSession object
-        return EmulatorSession.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses (unusual but possible)
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, EmulatorSession)
 
 @mcp.tool()
 def emulator_step() -> Union[StepResult, ErrorResult]:
@@ -62,17 +107,14 @@ def emulator_step() -> Union[StepResult, ErrorResult]:
     """
     response = safe_get("emulator/step")
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('raw_text', '')}"
-            )
-        # Otherwise, create a proper StepResult object
-        return StepResult.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('raw_text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, StepResult)
 
 @mcp.tool()
 def emulator_run(max_steps: int = 1000, stop_on_breakpoint: bool = True, stop_address: str = None) -> Union[RunResult, ErrorResult]:
@@ -97,17 +139,14 @@ def emulator_run(max_steps: int = 1000, stop_on_breakpoint: bool = True, stop_ad
     
     response = safe_post("emulator/run", params)
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('text', '')}"
-            )
-        # Otherwise, create a proper RunResult object
-        return RunResult.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, RunResult)
 
 @mcp.tool()
 def emulator_get_state() -> Union[EmulatorState, ErrorResult]:
@@ -119,17 +158,14 @@ def emulator_get_state() -> Union[EmulatorState, ErrorResult]:
     """
     response = safe_get("emulator/getState")
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('raw_text', '')}"
-            )
-        # Otherwise, create a proper EmulatorState object
-        return EmulatorState.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('raw_text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, EmulatorState)
 
 @mcp.tool()
 def emulator_get_writes() -> Union[MemoryWritesResult, ErrorResult]:
@@ -141,17 +177,14 @@ def emulator_get_writes() -> Union[MemoryWritesResult, ErrorResult]:
     """
     response = safe_get("emulator/getWrites")
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('raw_text', '')}"
-            )
-        # Otherwise, create a proper MemoryWritesResult object
-        return MemoryWritesResult.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('raw_text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, MemoryWritesResult)
 
 @mcp.tool()
 def emulator_reset() -> Dict[str, Any]:
@@ -166,10 +199,13 @@ def emulator_reset() -> Dict[str, Any]:
     response = safe_get("emulator/reset")
     
     if isinstance(response, dict):
+        # Check if this is a standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
         return response
     else:
         # Convert string response to dict for consistency
-        return ErrorResult.from_dict(response)
+        return ErrorResult.from_string(str(response)).error if isinstance(response, str) else ErrorResult.from_dict(response)
 
 @mcp.tool()
 def emulator_set_breakpoint(address: str) -> Dict[str, Any]:
@@ -223,17 +259,14 @@ def emulator_get_breakpoints() -> Union[BreakpointsResult, ErrorResult]:
     """
     response = safe_get("emulator/getBreakpoints")
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('raw_text', '')}"
-            )
-        # Otherwise, create a proper BreakpointsResult object
-        return BreakpointsResult.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('raw_text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, BreakpointsResult)
 
 @mcp.tool()
 def emulator_set_register(register: str, value: str) -> Dict[str, Any]:
@@ -471,17 +504,14 @@ def emulator_get_conditional_breakpoints() -> Union[ConditionalBreakpointsResult
     """
     response = safe_get("emulator/getConditionalBreakpoints")
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('raw_text', '')}"
-            )
-        # Otherwise, create a proper ConditionalBreakpointsResult object
-        return ConditionalBreakpointsResult.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('raw_text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, ConditionalBreakpointsResult)
 
 @mcp.tool()
 def emulator_import_memory(from_address: str, length: str) -> Dict[str, Any]:
@@ -540,44 +570,54 @@ def safe_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Di
                 # Convert plain text into a structured response
                 text_lines = response.text.splitlines()
                 return {
-                    "success": True,
+                    "status": "success",
                     "type": "text_response",
-                    "lines": text_lines,
-                    "raw_text": response.text
+                    "data": {
+                        "lines": text_lines,
+                        "raw_text": response.text
+                    }
                 }
         else:
             error_msg = f"Error {response.status_code}: {response.text.strip()}"
             logger.error(error_msg)
             return {
-                "success": False,
-                "error": error_msg,
-                "status_code": response.status_code
+                "status": "error",
+                "error": {
+                    "message": error_msg,
+                    "code": response.status_code
+                }
             }
             
     except requests.exceptions.Timeout:
         error_msg = f"Request to {url} timed out after {DEFAULT_TIMEOUT}s"
         logger.error(error_msg)
         return {
-            "success": False,
-            "error": error_msg,
-            "type": "timeout"
+            "status": "error",
+            "error": {
+                "message": error_msg,
+                "type": "timeout"
+            }
         }
     except requests.exceptions.ConnectionError:
         error_msg = f"Connection error to {url}. Is Ghidra running?"
         logger.error(error_msg)
         return {
-            "success": False,
-            "error": error_msg,
-            "type": "connection_error"
+            "status": "error",
+            "error": {
+                "message": error_msg,
+                "type": "connection_error"
+            }
         }
     except Exception as e:
         error_msg = f"Request failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
         return {
-            "success": False,
-            "error": error_msg,
-            "type": "exception",
-            "exception": str(e)
+            "status": "error",
+            "error": {
+                "message": error_msg,
+                "type": "exception",
+                "exception": str(e)
+            }
         }
 
 def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Dict[str, Any]:
@@ -610,43 +650,53 @@ def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Dict[str, Any]
                 # Fall back to text response if not JSON
                 text_response = response.text.strip()
                 return {
-                    "success": True,
+                    "status": "success",
                     "type": "text_response",
-                    "text": text_response
+                    "data": {
+                        "text": text_response
+                    }
                 }
         else:
             error_msg = f"Error {response.status_code}: {response.text.strip()}"
             logger.error(error_msg)
             return {
-                "success": False,
-                "error": error_msg,
-                "status_code": response.status_code
+                "status": "error",
+                "error": {
+                    "message": error_msg,
+                    "code": response.status_code
+                }
             }
             
     except requests.exceptions.Timeout:
         error_msg = f"Request to {url} timed out after {DEFAULT_TIMEOUT}s"
         logger.error(error_msg)
         return {
-            "success": False,
-            "error": error_msg,
-            "type": "timeout"
+            "status": "error",
+            "error": {
+                "message": error_msg,
+                "type": "timeout"
+            }
         }
     except requests.exceptions.ConnectionError:
         error_msg = f"Connection error to {url}. Is Ghidra running?"
         logger.error(error_msg)
         return {
-            "success": False,
-            "error": error_msg,
-            "type": "connection_error"
+            "status": "error",
+            "error": {
+                "message": error_msg,
+                "type": "connection_error"
+            }
         }
     except Exception as e:
         error_msg = f"Request failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
         return {
-            "success": False,
-            "error": error_msg,
-            "type": "exception",
-            "exception": str(e)
+            "status": "error",
+            "error": {
+                "message": error_msg,
+                "type": "exception",
+                "exception": str(e)
+            }
         }
 
 @mcp.tool()
@@ -664,15 +714,20 @@ def list_methods(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     response = safe_get("methods", {"offset": offset, "limit": limit})
     
     # Handle the response appropriately
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("items", [])
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error listing methods: {response.get('error')}")
-        return []
-    else:
-        # Fallback for unexpected response format
-        logger.warning(f"Unexpected response format from methods endpoint")
-        return response if isinstance(response, list) else []
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data.get("items", [])
+        elif response.get("success") is True:
+            return response.get("items", [])
+        elif response.get("error"):
+            logger.error(f"Error listing methods: {response.get('error')}")
+            return []
+    
+    # Fallback for unexpected response format
+    logger.warning(f"Unexpected response format from methods endpoint")
+    return response if isinstance(response, list) else []
 
 @mcp.tool()
 def list_classes(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -689,14 +744,19 @@ def list_classes(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     response = safe_get("classes", {"offset": offset, "limit": limit})
     
     # Handle the response appropriately
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("items", [])
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error listing classes: {response.get('error')}")
-        return []
-    else:
-        logger.warning(f"Unexpected response format from classes endpoint")
-        return response if isinstance(response, list) else []
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data.get("items", [])
+        elif response.get("success") is True:
+            return response.get("items", [])
+        elif response.get("error"):
+            logger.error(f"Error listing classes: {response.get('error')}")
+            return []
+    
+    logger.warning(f"Unexpected response format from classes endpoint")
+    return response if isinstance(response, list) else []
 
 @mcp.tool()
 def decompile_function(name: str) -> Dict[str, Any]:
@@ -781,14 +841,19 @@ def list_segments(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     """
     response = safe_get("segments", {"offset": offset, "limit": limit})
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("items", [])
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error listing segments: {response.get('error')}")
-        return []
-    else:
-        logger.warning(f"Unexpected response format from segments endpoint")
-        return response if isinstance(response, list) else []
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data.get("items", [])
+        elif response.get("success") is True:
+            return response.get("items", [])
+        elif response.get("error"):
+            logger.error(f"Error listing segments: {response.get('error')}")
+            return []
+    
+    logger.warning(f"Unexpected response format from segments endpoint")
+    return response if isinstance(response, list) else []
 
 @mcp.tool()
 def list_imports(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -804,14 +869,19 @@ def list_imports(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     """
     response = safe_get("imports", {"offset": offset, "limit": limit})
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("items", [])
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error listing imports: {response.get('error')}")
-        return []
-    else:
-        logger.warning(f"Unexpected response format from imports endpoint")
-        return response if isinstance(response, list) else []
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data.get("items", [])
+        elif response.get("success") is True:
+            return response.get("items", [])
+        elif response.get("error"):
+            logger.error(f"Error listing imports: {response.get('error')}")
+            return []
+    
+    logger.warning(f"Unexpected response format from imports endpoint")
+    return response if isinstance(response, list) else []
 
 @mcp.tool()
 def list_exports(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -827,14 +897,19 @@ def list_exports(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     """
     response = safe_get("exports", {"offset": offset, "limit": limit})
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("items", [])
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error listing exports: {response.get('error')}")
-        return []
-    else:
-        logger.warning(f"Unexpected response format from exports endpoint")
-        return response if isinstance(response, list) else []
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data.get("items", [])
+        elif response.get("success") is True:
+            return response.get("items", [])
+        elif response.get("error"):
+            logger.error(f"Error listing exports: {response.get('error')}")
+            return []
+    
+    logger.warning(f"Unexpected response format from exports endpoint")
+    return response if isinstance(response, list) else []
 
 @mcp.tool()
 def list_namespaces(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -850,14 +925,19 @@ def list_namespaces(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     """
     response = safe_get("namespaces", {"offset": offset, "limit": limit})
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("items", [])
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error listing namespaces: {response.get('error')}")
-        return []
-    else:
-        logger.warning(f"Unexpected response format from namespaces endpoint")
-        return response if isinstance(response, list) else []
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data.get("items", [])
+        elif response.get("success") is True:
+            return response.get("items", [])
+        elif response.get("error"):
+            logger.error(f"Error listing namespaces: {response.get('error')}")
+            return []
+    
+    logger.warning(f"Unexpected response format from namespaces endpoint")
+    return response if isinstance(response, list) else []
 
 @mcp.tool()
 def list_data_items(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -873,14 +953,19 @@ def list_data_items(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     """
     response = safe_get("data", {"offset": offset, "limit": limit})
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("items", [])
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error listing data items: {response.get('error')}")
-        return []
-    else:
-        logger.warning(f"Unexpected response format from data endpoint")
-        return response if isinstance(response, list) else []
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data.get("items", [])
+        elif response.get("success") is True:
+            return response.get("items", [])
+        elif response.get("error"):
+            logger.error(f"Error listing data items: {response.get('error')}")
+            return []
+    
+    logger.warning(f"Unexpected response format from data endpoint")
+    return response if isinstance(response, list) else []
 
 @mcp.tool()
 def search_functions_by_name(query: str, offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -901,14 +986,19 @@ def search_functions_by_name(query: str, offset: int = 0, limit: int = 100) -> L
         
     response = safe_get("searchFunctions", {"query": query, "offset": offset, "limit": limit})
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return response.get("items", [])
-    elif isinstance(response, dict) and response.get("error"):
-        logger.error(f"Error searching functions: {response.get('error')}")
-        return []
-    else:
-        logger.warning(f"Unexpected response format from searchFunctions endpoint")
-        return response if isinstance(response, list) else []
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return data.get("items", [])
+        elif response.get("success") is True:
+            return response.get("items", [])
+        elif response.get("error"):
+            logger.error(f"Error searching functions: {response.get('error')}")
+            return []
+    
+    logger.warning(f"Unexpected response format from searchFunctions endpoint")
+    return response if isinstance(response, list) else []
         
 @mcp.tool()
 def get_function_stats(continuation_token: str = "", limit: int = 5000) -> Dict[str, Any]:
@@ -935,19 +1025,28 @@ def get_function_stats(continuation_token: str = "", limit: int = 5000) -> Dict[
         "limit": limit
     })
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return {
-            "stats": response.get("functionStats", {}),
-            "isComplete": response.get("isComplete", False),
-            "continuationToken": response.get("continuationToken", "")
-        }
-    else:
-        logger.error("Failed to get function statistics")
-        return {
-            "stats": {},
-            "isComplete": True,
-            "continuationToken": ""
-        }
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return {
+                "stats": data.get("functionStats", {}),
+                "isComplete": data.get("isComplete", False),
+                "continuationToken": data.get("continuationToken", "")
+            }
+        elif response.get("success") is True:
+            return {
+                "stats": response.get("functionStats", {}),
+                "isComplete": response.get("isComplete", False),
+                "continuationToken": response.get("continuationToken", "")
+            }
+    
+    logger.error("Failed to get function statistics")
+    return {
+        "stats": {},
+        "isComplete": True,
+        "continuationToken": ""
+    }
 
 @mcp.tool()
 def get_symbol_stats(continuation_token: str = "", limit: int = 5000, symbol_type: str = None) -> Dict[str, Any]:
@@ -979,21 +1078,31 @@ def get_symbol_stats(continuation_token: str = "", limit: int = 5000, symbol_typ
         
     response = safe_get("programInfo/symbolStats", params)
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return {
-            "stats": response.get("symbolStats", {}),
-            "items": response.get("items", []),
-            "isComplete": response.get("isComplete", False),
-            "continuationToken": response.get("continuationToken", "")
-        }
-    else:
-        logger.error("Failed to get symbol statistics")
-        return {
-            "stats": {},
-            "items": [],
-            "isComplete": True,
-            "continuationToken": ""
-        }
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return {
+                "stats": data.get("symbolStats", {}),
+                "items": data.get("items", []),
+                "isComplete": data.get("isComplete", False),
+                "continuationToken": data.get("continuationToken", "")
+            }
+        elif response.get("success") is True:
+            return {
+                "stats": response.get("symbolStats", {}),
+                "items": response.get("items", []),
+                "isComplete": response.get("isComplete", False),
+                "continuationToken": response.get("continuationToken", "")
+            }
+    
+    logger.error("Failed to get symbol statistics")
+    return {
+        "stats": {},
+        "items": [],
+        "isComplete": True,
+        "continuationToken": ""
+    }
 
 @mcp.tool()
 def get_data_type_stats(continuation_token: str = "", limit: int = 5000) -> Dict[str, Any]:
@@ -1020,21 +1129,31 @@ def get_data_type_stats(continuation_token: str = "", limit: int = 5000) -> Dict
         "limit": limit
     })
     
-    if isinstance(response, dict) and response.get("success") is True:
-        return {
-            "stats": response.get("dataTypeStats", {}),
-            "items": response.get("items", []),
-            "isComplete": response.get("isComplete", False),
-            "continuationToken": response.get("continuationToken", "")
-        }
-    else:
-        logger.error("Failed to get data type statistics")
-        return {
-            "stats": {},
-            "items": [],
-            "isComplete": True,
-            "continuationToken": ""
-        }
+    if isinstance(response, dict):
+        # Check for the new standardized format with nested data
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            data = response.get("data", {})
+            return {
+                "stats": data.get("dataTypeStats", {}),
+                "items": data.get("items", []),
+                "isComplete": data.get("isComplete", False),
+                "continuationToken": data.get("continuationToken", "")
+            }
+        elif response.get("success") is True:
+            return {
+                "stats": response.get("dataTypeStats", {}),
+                "items": response.get("items", []),
+                "isComplete": response.get("isComplete", False),
+                "continuationToken": response.get("continuationToken", "")
+            }
+    
+    logger.error("Failed to get data type statistics")
+    return {
+        "stats": {},
+        "items": [],
+        "isComplete": True,
+        "continuationToken": ""
+    }
 
 @mcp.tool()
 def get_complete_function_stats() -> Dict[str, Any]:
@@ -1235,17 +1354,14 @@ def get_references(address: str) -> Union[ReferenceResult, ErrorResult]:
         
     response = safe_get("xrefs", {"address": address})
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('raw_text', '')}"
-            )
-        # Otherwise, create a proper ReferenceResult object
-        return ReferenceResult.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('raw_text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, ReferenceResult)
         
 @mcp.tool()
 def disassemble_at_address(address: str, length: int = 10) -> Union[DisassemblyResult, ErrorResult]:
@@ -1265,17 +1381,14 @@ def disassemble_at_address(address: str, length: int = 10) -> Union[DisassemblyR
         
     response = safe_get("disassemble", {"address": address, "length": length})
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('raw_text', '')}"
-            )
-        # Otherwise, create a proper DisassemblyResult object
-        return DisassemblyResult.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('raw_text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, DisassemblyResult)
         
 @mcp.tool()
 def disassemble_function(name: str) -> Union[FunctionDisassemblyResult, ErrorResult]:
@@ -1295,17 +1408,14 @@ def disassemble_function(name: str) -> Union[FunctionDisassemblyResult, ErrorRes
         
     response = safe_post("disassembleFunction", name)
     
-    if response.get("success", False):
-        # If this is a text response, try to parse it
-        if response.get("type") == "text_response":
-            return ErrorResult.from_string(
-                f"Unexpected text response: {response.get('text', '')}"
-            )
-        # Otherwise, create a proper FunctionDisassemblyResult object
-        return FunctionDisassemblyResult.from_dict(response)
-    else:
-        # Return an error result
-        return ErrorResult.from_dict(response)
+    # Handle text responses
+    if isinstance(response, dict) and response.get("type") == "text_response":
+        return ErrorResult.from_string(
+            f"Unexpected text response: {response.get('text', '')}"
+        )
+    
+    # Use the helper to handle the standardized response format
+    return extract_response_data(response, FunctionDisassemblyResult)
         
 @mcp.tool()
 def set_comment(address: str, comment: str, comment_type: int = 3) -> Dict[str, Any]:
