@@ -624,32 +624,26 @@ def safe_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Union[Di
         }
 
 def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Dict[str, Any]:
-    """
-    Perform a POST request and parse JSON response.
-    
-    Args:
-        endpoint: API endpoint to call
-        data: Either a dict to be sent as form data or a string to be sent as raw body
-        
-    Returns:
-        Dictionary containing the parsed JSON response or error information
-    """
     url = f"{ghidra_server_url}/{endpoint}"
-    
+
     try:
         logger.debug(f"POST request to {url}")
         if isinstance(data, dict):
-            response = requests.post(url, data=data, timeout=DEFAULT_TIMEOUT)
+            # Use json parameter instead of data for dictionaries
+            # This will set Content-Type: application/json automatically
+            response = requests.post(url, json=data, timeout=DEFAULT_TIMEOUT)
         else:
+            # For string data, continue to send as plain text
             response = requests.post(url, data=data.encode("utf-8"), timeout=DEFAULT_TIMEOUT)
-        
+
         response.encoding = 'utf-8'
-        
+
+        # Rest of function remains the same
         if response.ok:
             try:
                 # Try to parse as JSON first
                 json_response = response.json()
-                
+
                 # If the response isn't already in the standardized format, wrap it
                 if "status" not in json_response:
                     return {
@@ -677,7 +671,7 @@ def safe_post(endpoint: str, data: Union[Dict[str, Any], str]) -> Dict[str, Any]
                     "code": response.status_code
                 }
             }
-            
+
     except requests.exceptions.Timeout:
         error_msg = f"Request to {url} timed out after {DEFAULT_TIMEOUT}s"
         logger.error(error_msg)
@@ -1265,6 +1259,186 @@ def get_complete_symbol_stats(symbol_type: str = None) -> Dict[str, Any]:
         "stats": all_stats,
         "items": all_items
     }
+
+# ----------------------------------------------------------------------------------
+# DataType functions
+# ----------------------------------------------------------------------------------
+
+@mcp.tool()
+def create_structure_data_type(name: str, description: str = None, packed: bool = False, alignment: int = 0) -> Dict[str, Any]:
+    """
+    Create a new structure data type in the program's data type manager.
+    
+    Args:
+        name: Name of the structure to create
+        description: Optional description of the structure
+        packed: Whether the structure should be packed (no alignment)
+        alignment: Alignment value (e.g., 1, 2, 4, 8)
+        
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    # Prepare parameters
+    params = {
+        "name": name,
+        "packed": str(packed).lower()
+    }
+    
+    if description:
+        params["description"] = description
+    
+    if alignment > 0:
+        params["alignment"] = str(alignment)
+    
+    response = safe_post("dataTypes/createStructure", params)
+    
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def add_field_to_structure(structure_name: str, field_name: str, field_type: str, 
+                          comment: str = None, offset: int = -1) -> Dict[str, Any]:
+    """
+    Add a field to an existing structure data type.
+    
+    Args:
+        structure_name: Name of the structure to add the field to
+        field_name: Name of the field to add
+        field_type: Data type name for the field
+        comment: Optional comment for the field
+        offset: Byte offset where the field should be inserted (-1 to append to the end)
+        
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    # Prepare parameters
+    params = {
+        "structureName": structure_name,
+        "fieldName": field_name,
+        "fieldType": field_type
+    }
+    
+    if comment:
+        params["comment"] = comment
+    
+    if offset >= 0:
+        params["offset"] = str(offset)
+    
+    response = safe_post("dataTypes/addFieldToStructure", params)
+    
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+        
+@mcp.tool()
+def apply_structure_to_memory(structure_name: str, address: str) -> Dict[str, Any]:
+    """
+    Apply a structure data type to memory at a specified address.
+    
+    Args:
+        structure_name: Name of the structure to apply
+        address: Address where to apply the structure (e.g., "0x1400")
+        
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    # Prepare parameters
+    params = {
+        "structureName": structure_name,
+        "address": address
+    }
+    
+    response = safe_post("dataTypes/applyStructure", params)
+    
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+        
+@mcp.tool()
+def create_enum_data_type(name: str, value_size: int = 4, values: Dict[str, int] = None, 
+                         description: str = None) -> Dict[str, Any]:
+    """
+    Create a new enumeration data type in the program's data type manager.
+    
+    Args:
+        name: Name of the enum to create
+        value_size: Size of the enum values in bytes (1, 2, 4, or 8)
+        values: Dictionary of name to value pairs for enum entries
+        description: Optional description of the enum
+        
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    # Prepare parameters
+    params = {
+        "name": name,
+        "valueSize": str(value_size)
+    }
+    
+    if description:
+        params["description"] = description
+    
+    # Convert values dictionary to comma-separated name:value pairs
+    if values:
+        values_str = ",".join([f"{k}:{v}" for k, v in values.items()])
+        params["values"] = values_str
+    
+    response = safe_post("dataTypes/createEnum", params)
+    
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+        
+@mcp.tool()
+def apply_enum_to_memory(enum_name: str, address: str) -> Dict[str, Any]:
+    """
+    Apply an enum data type to memory at a specified address.
+    
+    Args:
+        enum_name: Name of the enum to apply
+        address: Address where to apply the enum (e.g., "0x1400")
+        
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    # Prepare parameters
+    params = {
+        "enumName": enum_name,
+        "address": address
+    }
+    
+    response = safe_post("dataTypes/applyEnum", params)
+    
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+
 
 @mcp.tool()
 def get_program_info(detail_level: str = "basic") -> Dict[str, Any]:
