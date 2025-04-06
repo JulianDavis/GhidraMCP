@@ -1,14 +1,20 @@
 package com.juliandavis.ghidramcp.services;
 
+import com.juliandavis.ghidramcp.api.util.ResponseUtil;
+import ghidra.program.model.symbol.Symbol; // Correct import for Symbol
 import com.juliandavis.ghidramcp.core.service.Service;
 
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.program.model.pcode.HighFunctionDBUtil; // Correct import for the utility class
+import ghidra.program.model.data.DataType;                 // Import DataType
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.Variable;        // Import Variable
+import ghidra.program.model.listing.VariableStorage; // Import VariableStorage
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.SourceType;
-import ghidra.program.model.symbol.Symbol;
+// Removed redundant Symbol import (already imported on line 4)
 import ghidra.util.Msg;
 import ghidra.util.task.ConsoleTaskMonitor;
 
@@ -59,11 +65,11 @@ public class DecompileService implements Service {
      */
     public Map<String, Object> decompileFunctionByName(String name) {
         if (program == null) {
-            return createErrorResponse("No program loaded");
+            return ResponseUtil.createErrorResponse("No program loaded");
         }
 
         if (name == null || name.isEmpty()) {
-            return createErrorResponse("Function name is required");
+            return ResponseUtil.createErrorResponse("Function name is required");
         }
 
         DecompInterface decomp = null;
@@ -79,7 +85,7 @@ public class DecompileService implements Service {
             }
 
             if (function == null) {
-                return createErrorResponse("Function not found: " + name);
+                return ResponseUtil.createErrorResponse("Function not found: " + name);
             }
 
             // Create and initialize decompiler interface
@@ -96,14 +102,14 @@ public class DecompileService implements Service {
                 response.put("success", true);
                 response.put("signature", function.getSignature().toString());
                 response.put("address", function.getEntryPoint().toString());
-                return createSuccessResponse(response);
+                return ResponseUtil.createSuccessResponse(response);
             } else {
                 String errorMsg = result != null ? result.getErrorMessage() : "Unknown decompilation error";
-                return createErrorResponse("Decompilation failed: " + errorMsg);
+                return ResponseUtil.createErrorResponse("Decompilation failed: " + errorMsg);
             }
         } catch (Exception e) {
             Msg.error(this, "Error decompiling function: " + name, e);
-            return createErrorResponse("Error: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Error: " + e.getMessage());
         } finally {
             if (decomp != null) {
                 decomp.dispose();
@@ -120,15 +126,15 @@ public class DecompileService implements Service {
      */
     public Map<String, Object> decompileAddressRange(String startAddressStr, String endAddressStr) {
         if (program == null) {
-            return createErrorResponse("No program loaded");
+            return ResponseUtil.createErrorResponse("No program loaded");
         }
 
         if (startAddressStr == null || startAddressStr.isEmpty()) {
-            return createErrorResponse("Start address is required");
+            return ResponseUtil.createErrorResponse("Start address is required");
         }
 
         if (endAddressStr == null || endAddressStr.isEmpty()) {
-            return createErrorResponse("End address is required");
+            return ResponseUtil.createErrorResponse("End address is required");
         }
 
         DecompInterface decompInterface = null;
@@ -139,16 +145,16 @@ public class DecompileService implements Service {
             Address endAddress = program.getAddressFactory().getAddress(endAddressStr);
 
             if (startAddress == null) {
-                return createErrorResponse("Invalid start address: " + startAddressStr);
+                return ResponseUtil.createErrorResponse("Invalid start address: " + startAddressStr);
             }
 
             if (endAddress == null) {
-                return createErrorResponse("Invalid end address: " + endAddressStr);
+                return ResponseUtil.createErrorResponse("Invalid end address: " + endAddressStr);
             }
 
             // Ensure start address is before end address
             if (startAddress.compareTo(endAddress) > 0) {
-                return createErrorResponse("Start address must be less than or equal to end address");
+                return ResponseUtil.createErrorResponse("Start address must be less than or equal to end address");
             }
 
             // Create the decompiler interface
@@ -217,11 +223,11 @@ public class DecompileService implements Service {
                 result.put("message", "No functions found in the specified address range");
             }
 
-            return createSuccessResponse(result);
+            return ResponseUtil.createSuccessResponse(result);
 
         } catch (Exception e) {
             Msg.error(this, "Error decompiling address range", e);
-            return createErrorResponse("Error decompiling address range: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Error decompiling address range: " + e.getMessage());
         } finally {
             if (decompInterface != null) {
                 decompInterface.dispose();
@@ -237,17 +243,17 @@ public class DecompileService implements Service {
      */
     public Map<String, Object> identifyFunctionAtAddress(String addressStr) {
         if (program == null) {
-            return createErrorResponse("No program loaded");
+            return ResponseUtil.createErrorResponse("No program loaded");
         }
 
         if (addressStr == null || addressStr.isEmpty()) {
-            return createErrorResponse("Address is required");
+            return ResponseUtil.createErrorResponse("Address is required");
         }
 
         try {
             Address address = program.getAddressFactory().getAddress(addressStr);
             if (address == null) {
-                return createErrorResponse("Invalid address: " + addressStr);
+                return ResponseUtil.createErrorResponse("Invalid address: " + addressStr);
             }
 
             // Check if a function exists at the specified address
@@ -264,7 +270,7 @@ public class DecompileService implements Service {
                 result.put("functionType", "entry_point");
                 result.put("function", getFunctionDetails(functionAt));
                 result.put("message", "Function '" + functionAt.getName() + "' starts at " + address);
-                return createSuccessResponse(result);
+                return ResponseUtil.createSuccessResponse(result);
             }
 
             // Address is within a function but not at the entry point
@@ -278,7 +284,7 @@ public class DecompileService implements Service {
                 result.put("offsetFromEntry", offset);
                 result.put("message", "Address is within function '" + functionContaining.getName() +
                         "' at offset " + offset + " bytes from entry point");
-                return createSuccessResponse(result);
+                return ResponseUtil.createSuccessResponse(result);
             }
 
             // No function at or containing this address
@@ -290,7 +296,7 @@ public class DecompileService implements Service {
                 result.put("instruction", program.getListing().getInstructionAt(address).toString());
                 result.put("mnemonic", program.getListing().getInstructionAt(address).getMnemonicString());
                 result.put("message", "No function at address, but instruction found: " + program.getListing().getInstructionAt(address));
-                return createSuccessResponse(result);
+                return ResponseUtil.createSuccessResponse(result);
             }
 
             // Check if there is data at this address
@@ -299,16 +305,16 @@ public class DecompileService implements Service {
                 result.put("dataType", program.getListing().getDataAt(address).getDataType().getName());
                 result.put("dataValue", program.getListing().getDataAt(address).getDefaultValueRepresentation());
                 result.put("message", "No function at address, but data found: " + program.getListing().getDataAt(address).getDataType().getName());
-                return createSuccessResponse(result);
+                return ResponseUtil.createSuccessResponse(result);
             }
 
             // Nothing defined at this address
             result.put("message", "No function, instruction, or data defined at address " + address);
-            return createSuccessResponse(result);
+            return ResponseUtil.createSuccessResponse(result);
 
         } catch (Exception e) {
             Msg.error(this, "Error identifying function at address", e);
-            return createErrorResponse("Error identifying function: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Error identifying function: " + e.getMessage());
         }
     }
 
@@ -322,17 +328,17 @@ public class DecompileService implements Service {
      */
     public Map<String, Object> defineFunctionAtAddress(String addressStr, String name, boolean force) {
         if (program == null) {
-            return createErrorResponse("No program loaded");
+            return ResponseUtil.createErrorResponse("No program loaded");
         }
 
         if (addressStr == null || addressStr.isEmpty()) {
-            return createErrorResponse("Address is required");
+            return ResponseUtil.createErrorResponse("Address is required");
         }
 
         try {
             Address address = program.getAddressFactory().getAddress(addressStr);
             if (address == null) {
-                return createErrorResponse("Invalid address: " + addressStr);
+                return ResponseUtil.createErrorResponse("Invalid address: " + addressStr);
             }
 
             // Check if a function already exists at this address
@@ -344,7 +350,7 @@ public class DecompileService implements Service {
                 result.put("functionCreated", false);
                 result.put("message", "Function already exists at " + address);
                 result.put("function", getFunctionDetails(existingFunction));
-                return createSuccessResponse(result);
+                return ResponseUtil.createSuccessResponse(result);
             }
 
             // Check if this address is within an existing function
@@ -357,7 +363,7 @@ public class DecompileService implements Service {
                 result.put("message", "Address " + address + " is within existing function '" +
                         containingFunction.getName() + "'. Use force=true to override.");
                 result.put("containingFunction", getFunctionDetails(containingFunction));
-                return createSuccessResponse(result);
+                return ResponseUtil.createSuccessResponse(result);
             }
 
             // Check if there's an instruction at this address
@@ -368,7 +374,7 @@ public class DecompileService implements Service {
                 result.put("functionCreated", false);
                 result.put("message", "No instruction at " + address +
                         ". Cannot create function at non-instruction address. Use force=true to override.");
-                return createSuccessResponse(result);
+                return ResponseUtil.createSuccessResponse(result);
             }
 
             // All checks passed or force=true, try to create the function
@@ -406,10 +412,10 @@ public class DecompileService implements Service {
                 result.put("function", getFunctionDetails(newFunction));
             }
 
-            return createSuccessResponse(result);
+            return ResponseUtil.createSuccessResponse(result);
         } catch (Exception e) {
             Msg.error(this, "Error defining function at address", e);
-            return createErrorResponse("Error defining function: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Error defining function: " + e.getMessage());
         }
     }
 
@@ -422,20 +428,20 @@ public class DecompileService implements Service {
      */
     public Map<String, Object> renameFunction(String oldName, String newName) {
         if (program == null) {
-            return createErrorResponse("No program loaded");
+            return ResponseUtil.createErrorResponse("No program loaded");
         }
 
         if (oldName == null || oldName.isEmpty()) {
-            return createErrorResponse("Old function name is required");
+            return ResponseUtil.createErrorResponse("Old function name is required");
         }
 
         if (newName == null || newName.isEmpty()) {
-            return createErrorResponse("New function name is required");
+            return ResponseUtil.createErrorResponse("New function name is required");
         }
 
         // Check if the new name is valid (not necessary in all cases but good practice)
         if (!isValidSymbolName(newName)) {
-            return createErrorResponse("Invalid function name: " + newName);
+            return ResponseUtil.createErrorResponse("Invalid function name: " + newName);
         }
 
         boolean success = false;
@@ -452,7 +458,7 @@ public class DecompileService implements Service {
             }
 
             if (function == null) {
-                return createErrorResponse("Function not found: " + oldName);
+                return ResponseUtil.createErrorResponse("Function not found: " + oldName);
             }
 
             // Attempt to rename the function
@@ -478,10 +484,10 @@ public class DecompileService implements Service {
                 response.put("function", getFunctionDetails(function));
             }
 
-            return createSuccessResponse(response);
+            return ResponseUtil.createSuccessResponse(response);
         } catch (Exception e) {
             Msg.error(this, "Error renaming function", e);
-            return createErrorResponse("Error: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Error: " + e.getMessage());
         }
     }
 
@@ -494,20 +500,20 @@ public class DecompileService implements Service {
      */
     public Map<String, Object> renameDataAtAddress(String addressStr, String newName) {
         if (program == null) {
-            return createErrorResponse("No program loaded");
+            return ResponseUtil.createErrorResponse("No program loaded");
         }
 
         if (addressStr == null || addressStr.isEmpty()) {
-            return createErrorResponse("Address is required");
+            return ResponseUtil.createErrorResponse("Address is required");
         }
 
         if (newName == null || newName.isEmpty()) {
-            return createErrorResponse("New name is required");
+            return ResponseUtil.createErrorResponse("New name is required");
         }
 
         // Check if the new name is valid
         if (!isValidSymbolName(newName)) {
-            return createErrorResponse("Invalid symbol name: " + newName);
+            return ResponseUtil.createErrorResponse("Invalid symbol name: " + newName);
         }
 
         boolean success = false;
@@ -516,12 +522,12 @@ public class DecompileService implements Service {
         try {
             Address address = program.getAddressFactory().getAddress(addressStr);
             if (address == null) {
-                return createErrorResponse("Invalid address: " + addressStr);
+                return ResponseUtil.createErrorResponse("Invalid address: " + addressStr);
             }
 
             // Check if there is data at this address
             if (program.getListing().getDataAt(address) == null) {
-                return createErrorResponse("No data found at address: " + addressStr);
+                return ResponseUtil.createErrorResponse("No data found at address: " + addressStr);
             }
 
             // Get the symbol at this address
@@ -566,10 +572,10 @@ public class DecompileService implements Service {
                 response.put("dataValue", program.getListing().getDataAt(address).getDefaultValueRepresentation());
             }
 
-            return createSuccessResponse(response);
+            return ResponseUtil.createSuccessResponse(response); // Already correct, but included for completeness
         } catch (Exception e) {
             Msg.error(this, "Error renaming data", e);
-            return createErrorResponse("Error: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Error: " + e.getMessage());
         }
     }
 
@@ -583,31 +589,33 @@ public class DecompileService implements Service {
  * @return Map containing the result of the rename operation.
  */
 public Map<String, Object> renameVariableInFunction(String functionName, String variableName, String newName) {
+        // Removed declaration from here. It will be declared below.
     if (program == null) {
-        return createErrorResponse("No program loaded");
+        return ResponseUtil.createErrorResponse("No program loaded");
     }
 
     if (functionName == null || functionName.isEmpty()) {
-        return createErrorResponse("Function name is required");
+        return ResponseUtil.createErrorResponse("Function name is required");
     }
 
     if (variableName == null || variableName.isEmpty()) {
-        return createErrorResponse("Current variable name is required");
+        return ResponseUtil.createErrorResponse("Current variable name is required");
     }
 
     if (newName == null || newName.isEmpty()) {
-        return createErrorResponse("New variable name is required");
+        return ResponseUtil.createErrorResponse("New variable name is required");
     }
 
     // Validate the new name
     if (!isValidSymbolName(newName)) {
-        return createErrorResponse("Invalid new variable name: " + newName);
+        return ResponseUtil.createErrorResponse("Invalid new variable name: " + newName);
     }
 
     DecompInterface decomp = null;
     boolean success = false;
     String message = "Variable rename failed";
     Symbol targetSymbol = null;
+    ghidra.program.model.pcode.HighSymbol targetHighSymbol = null; // Declare targetHighSymbol here
     Function function = null;
 
     try {
@@ -620,7 +628,7 @@ public Map<String, Object> renameVariableInFunction(String functionName, String 
         }
 
         if (function == null) {
-            return createErrorResponse("Function not found: " + functionName);
+            return ResponseUtil.createErrorResponse("Function not found: " + functionName);
         }
 
         // Decompile to get HighFunction
@@ -630,58 +638,59 @@ public Map<String, Object> renameVariableInFunction(String functionName, String 
 
         if (results == null || !results.decompileCompleted()) {
             String errorMsg = results != null ? results.getErrorMessage() : "Unknown decompilation error";
-            return createErrorResponse("Decompilation failed for function '" + functionName + "': " + errorMsg);
+            return ResponseUtil.createErrorResponse("Decompilation failed for function '" + functionName + "': " + errorMsg);
         }
 
         ghidra.program.model.pcode.HighFunction highFunction = results.getHighFunction();
         if (highFunction == null) {
-            return createErrorResponse("Could not get HighFunction for '" + functionName + "'");
+            return ResponseUtil.createErrorResponse("Could not get HighFunction for '" + functionName + "'");
         }
 
-        // Find the symbol (variable) by name
         ghidra.program.model.pcode.LocalSymbolMap symbolMap = highFunction.getLocalSymbolMap();
-        Iterator<ghidra.program.model.pcode.HighSymbol> symbolIterator = symbolMap.getSymbols(); // Get iterator
-        while (symbolIterator.hasNext()) { // Use while loop
+        Iterator<ghidra.program.model.pcode.HighSymbol> symbolIterator = symbolMap.getSymbols();
+        while (symbolIterator.hasNext()) {
             ghidra.program.model.pcode.HighSymbol highSymbol = symbolIterator.next();
-             // Check if it's a parameter or a local stack variable
-            if (highSymbol.isParameter() || (highSymbol.getStorage().isStackStorage() && !highSymbol.isParameter())) {
-                if (highSymbol.getName().equals(variableName)) {
-                    // Found the symbol, now get the underlying Symbol object to rename
-                    targetSymbol = highSymbol.getSymbol();
-                    break; // Exit the while loop
-                }
+            if (highSymbol.getName().equals(variableName)) {
+                targetHighSymbol = highSymbol;
+                targetSymbol = highSymbol.getSymbol();
+                break;
             }
         }
 
-
-        if (targetSymbol == null) {
-            return createErrorResponse("Variable '" + variableName + "' not found in function '" + functionName + "'");
+        // Check if we found the HighSymbol
+        if (targetHighSymbol == null) {
+            return ResponseUtil.createErrorResponse("Variable '" + variableName + "' not found in function '" + functionName + "'");
         }
 
-        // Attempt to rename the symbol within a transaction
+        // Attempt to rename using HighFunctionDBUtil.updateDBVariable within a transaction
         int tx = program.startTransaction("Rename variable " + variableName + " to " + newName + " in " + functionName);
         try {
-            targetSymbol.setName(newName, SourceType.USER_DEFINED);
-            success = true; // Assume success if no exception
+            // Use the utility function to handle the rename/update in the database
+            // Pass the existing data type as we only want to rename
+            HighFunctionDBUtil.updateDBVariable(targetHighSymbol, newName, targetHighSymbol.getDataType(), SourceType.USER_DEFINED);
+            success = true; // Assume success if no exception is thrown
             message = "Variable '" + variableName + "' renamed to '" + newName + "' successfully";
             Msg.info(this, message + " in function " + functionName);
+            // Try to get the symbol now, it should exist after the update
+            targetSymbol = targetHighSymbol.getSymbol();
+
         } catch (ghidra.util.exception.InvalidInputException e) {
             message = "Rename failed: Invalid name '" + newName + "'. " + e.getMessage();
             Msg.error(this, message, e);
             success = false;
-        } catch (Exception e) {
-            message = "Rename failed: " + e.getMessage();
+        } catch (Exception e) { // Catch other potential exceptions during updateDBVariable
+            message = "Rename failed due to unexpected exception: " + e.getClass().getName() + " - " + e.getMessage();
             Msg.error(this, message, e);
             success = false;
         } finally {
             program.endTransaction(tx, success);
         }
 
-    } catch (Exception e) {
-        message = "Error renaming variable: " + e.getMessage();
+    } catch (Exception e) { // Catch exceptions during the overall process (finding function, decompiling etc.)
+        message = "Error during rename variable process: " + e.getMessage();
         Msg.error(this, message, e);
-        success = false;
-    } finally {
+        success = false; // Ensure success is false if we land here
+    } finally { // Ensure decompiler is disposed
         if (decomp != null) {
             decomp.dispose();
         }
@@ -705,7 +714,7 @@ public Map<String, Object> renameVariableInFunction(String functionName, String 
 
 
     if (success) {
-        return createSuccessResponse(response);
+        return ResponseUtil.createSuccessResponse(response);
     } else {
         // Use the existing error response structure but add context
         Map<String, Object> errorData = new HashMap<>();
@@ -713,7 +722,8 @@ public Map<String, Object> renameVariableInFunction(String functionName, String 
         errorData.put("variableName", variableName);
         errorData.put("newName", newName);
         // Need to check how createErrorResponse handles extra data or create a new helper
-        return createErrorResponse(message); // Simplified for now
+        // Use the new ResponseUtil, potentially adding context later if needed
+        return ResponseUtil.createErrorResponse(message);
     }
 }
 
@@ -785,52 +795,4 @@ public Map<String, Object> renameVariableInFunction(String functionName, String 
         return !name.contains(" ") && !name.contains("\t") && !name.contains("\n");
     }
 
-    /**
-     * Creates a standardized error response with default error code (400)
-     *
-     * @param errorMessage The error message
-     * @return Map representing the error response
-     */
-    private Map<String, Object> createErrorResponse(String errorMessage) {
-        return createErrorResponse(errorMessage, 400);
-    }
-
-    /**
-     * Creates a standardized error response
-     *
-     * @param errorMessage The error message
-     * @param errorCode Optional error code
-     * @return Map representing the error response
-     */
-    private Map<String, Object> createErrorResponse(String errorMessage, int errorCode) {
-        Map<String, Object> response = new HashMap<>();
-        Map<String, Object> errorDetails = new HashMap<>();
-
-        // Standard top-level structure
-        response.put("status", "error");
-
-        // Error details
-        errorDetails.put("message", errorMessage);
-        errorDetails.put("code", errorCode);
-
-        response.put("error", errorDetails);
-
-        return response;
-    }
-
-    /**
-     * Creates a standardized success response
-     *
-     * @param data The data to include in the response
-     * @return Map representing the success response
-     */
-    private Map<String, Object> createSuccessResponse(Map<String, Object> data) {
-        Map<String, Object> response = new HashMap<>();
-
-        // Standard top-level structure
-        response.put("status", "success");
-        response.put("data", data);
-
-        return response;
-    }
-}
+} // End of DecompileService class

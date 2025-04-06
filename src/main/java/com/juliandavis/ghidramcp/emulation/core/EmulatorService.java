@@ -1,5 +1,6 @@
 package com.juliandavis.ghidramcp.emulation.core;
 
+import com.juliandavis.ghidramcp.api.util.ResponseUtil; // Added import
 import com.juliandavis.ghidramcp.core.service.Service;
 import com.juliandavis.ghidramcp.emulation.arch.ArchitectureHelper;
 import com.juliandavis.ghidramcp.emulation.io.StdioEmulationHelper;
@@ -23,7 +24,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 /**
- * Core service that implements emulation functionality, managing sessions and 
+ * Core service that implements emulation functionality, managing sessions and
  * providing methods for emulator control and state management.
  */
 public class EmulatorService implements Service {
@@ -61,54 +62,7 @@ public class EmulatorService implements Service {
         Msg.info(this, "EmulatorService disposed");
     }
 
-    /**
-     * Creates a standardized error result map.
-     *
-     * @param errorMessage the error message
-     * @param errorCode optional error code (default: 400)
-     * @return a map containing the standardized error information
-     */
-    private Map<String, Object> createErrorResult(String errorMessage, int errorCode) {
-        Map<String, Object> response = new HashMap<>();
-        Map<String, Object> errorDetails = new HashMap<>();
-        
-        // Standard top-level structure
-        response.put("status", "error");
-        
-        // Error details
-        errorDetails.put("message", errorMessage);
-        errorDetails.put("code", errorCode);
-        
-        response.put("error", errorDetails);
-        
-        return response;
-    }
-    
-    /**
-     * Creates a standardized error result map with default error code (400).
-     *
-     * @param errorMessage the error message
-     * @return a map containing the standardized error information
-     */
-    private Map<String, Object> createErrorResult(String errorMessage) {
-        return createErrorResult(errorMessage, 400);
-    }
-    
-    /**
-     * Creates a standardized success result map.
-     *
-     * @param data the data to include in the response
-     * @return a map containing the standardized success information
-     */
-    private Map<String, Object> createSuccessResult(Map<String, Object> data) {
-        Map<String, Object> response = new HashMap<>();
-        
-        // Standard top-level structure
-        response.put("status", "success");
-        response.put("data", data);
-        
-        return response;
-    }
+    // Removed createErrorResponse and createSuccessResponse methods as they are now in ResponseUtil
 
     /**
      * Initializes a new emulation session with the specified starting address.
@@ -119,14 +73,14 @@ public class EmulatorService implements Service {
      */
     public Map<String, Object> initialize(String startAddress, boolean writeTracking) {
         if (currentProgram == null) {
-            return createErrorResult("No program is loaded");
+            return ResponseUtil.createErrorResponse("No program is loaded");
         }
 
         try {
             // Parse the start address
             Address addr = currentProgram.getAddressFactory().getAddress(startAddress);
             if (addr == null) {
-                return createErrorResult("Invalid address: " + startAddress);
+                return ResponseUtil.createErrorResponse("Invalid address: " + startAddress);
             }
 
             // Create a new emulator helper
@@ -141,7 +95,7 @@ public class EmulatorService implements Service {
             // Initialize the emulator
             if (!initializeEmulator(session, addr, writeTracking)) {
                 emulator.dispose();
-                return createErrorResult("Failed to initialize emulator: " + session.getLastError());
+                return ResponseUtil.createErrorResponse("Failed to initialize emulator: " + session.getLastError());
             }
 
             // Store the session
@@ -154,9 +108,9 @@ public class EmulatorService implements Service {
             data.put("writeTracking", writeTracking);
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to initialize emulator: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to initialize emulator: " + e.getMessage());
         }
     }
 
@@ -271,7 +225,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getState(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -281,7 +235,7 @@ public class EmulatorService implements Service {
             // Get the program counter
             String pcRegister = archHelper.getProgramCounterRegisterName();
             if (pcRegister == null) {
-                return createErrorResult("Could not determine program counter register");
+                return ResponseUtil.createErrorResponse("Could not determine program counter register");
             }
 
             BigInteger pcValue = emulator.readRegister(pcRegister);
@@ -298,9 +252,9 @@ public class EmulatorService implements Service {
             }
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get emulator state: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get emulator state: " + e.getMessage());
         }
     }
 
@@ -332,7 +286,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> step(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -342,7 +296,7 @@ public class EmulatorService implements Service {
             // Get the program counter register
             String pcRegister = archHelper.getProgramCounterRegisterName();
             if (pcRegister == null) {
-                return createErrorResult("Could not determine program counter register");
+                return ResponseUtil.createErrorResponse("Could not determine program counter register");
             }
 
             // Get the current address before stepping
@@ -353,7 +307,7 @@ public class EmulatorService implements Service {
             boolean success = emulator.step(null);
             if (!success) {
                 session.setLastError("Emulation step failed");
-                return createErrorResult("Failed to execute instruction");
+                return ResponseUtil.createErrorResponse("Failed to execute instruction");
             }
 
             // Get the new program counter value
@@ -372,10 +326,10 @@ public class EmulatorService implements Service {
             data.put("toAddress", pcAddressAfter.toString());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
             session.setLastError("Exception during step: " + e.getMessage());
-            return createErrorResult("Failed to step emulator: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to step emulator: " + e.getMessage());
         }
     }
 
@@ -391,7 +345,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> run(String sessionId, int maxSteps, boolean stopOnBreakpoint, String stopAddress) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -401,7 +355,7 @@ public class EmulatorService implements Service {
             // Get the program counter register
             String pcRegister = archHelper.getProgramCounterRegisterName();
             if (pcRegister == null) {
-                return createErrorResult("Could not determine program counter register");
+                return ResponseUtil.createErrorResponse("Could not determine program counter register");
             }
 
             // Get the current address before running
@@ -413,7 +367,7 @@ public class EmulatorService implements Service {
             if (stopAddress != null && !stopAddress.isEmpty()) {
                 stopAddr = currentProgram.getAddressFactory().getAddress(stopAddress);
                 if (stopAddr == null) {
-                    return createErrorResult("Invalid stop address: " + stopAddress);
+                    return ResponseUtil.createErrorResponse("Invalid stop address: " + stopAddress);
                 }
             }
 
@@ -429,7 +383,7 @@ public class EmulatorService implements Service {
                 // Start with the initial PC value
                 pcValue = emulator.readRegister(pcRegister);
                 Address currentAddr = currentProgram.getAddressFactory().getAddress(pcValue.toString(16));
-                
+
                 for (stepsExecuted = 0; stepsExecuted < maxSteps; stepsExecuted++) {
                     // Check if we've reached the stop address
                     if (currentAddr.equals(stopAddr)) {
@@ -459,12 +413,12 @@ public class EmulatorService implements Service {
                         session.setLastError("Emulation step failed during run");
                         break;
                     }
-                    
+
                     // Track stack changes if enabled - using the address from BEFORE the step
                     if (session.isTrackingStackChanges()) {
                         trackStackChanges(session, addressBeforeStep);
                     }
-                    
+
                     // Update current address for next iteration (PC has changed)
                     pcValue = emulator.readRegister(pcRegister);
                     currentAddr = currentProgram.getAddressFactory().getAddress(pcValue.toString(16));
@@ -494,11 +448,11 @@ public class EmulatorService implements Service {
             data.put("hitMaxSteps", stepsExecuted >= maxSteps);
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
             session.setRunning(false);
             session.setLastError("Exception during run: " + e.getMessage());
-            return createErrorResult("Failed to run emulator: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to run emulator: " + e.getMessage());
         }
     }
 
@@ -511,7 +465,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> reset(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -521,7 +475,7 @@ public class EmulatorService implements Service {
             // Get the program counter register
             String pcRegister = archHelper.getProgramCounterRegisterName();
             if (pcRegister == null) {
-                return createErrorResult("Could not determine program counter register");
+                return ResponseUtil.createErrorResponse("Could not determine program counter register");
             }
 
             // Reset the emulator state
@@ -547,10 +501,10 @@ public class EmulatorService implements Service {
             data.put("message", "Emulator reset to initial state");
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
             session.setLastError("Exception during reset: " + e.getMessage());
-            return createErrorResult("Failed to reset emulator: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to reset emulator: " + e.getMessage());
         }
     }
 
@@ -564,14 +518,14 @@ public class EmulatorService implements Service {
     public Map<String, Object> setBreakpoint(String sessionId, String address) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
             // Parse the address
             Address addr = currentProgram.getAddressFactory().getAddress(address);
             if (addr == null) {
-                return createErrorResult("Invalid address: " + address);
+                return ResponseUtil.createErrorResponse("Invalid address: " + address);
             }
 
             // Add the breakpoint to the session
@@ -586,9 +540,9 @@ public class EmulatorService implements Service {
             data.put("added", added);
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to set breakpoint: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to set breakpoint: " + e.getMessage());
         }
     }
 
@@ -602,14 +556,14 @@ public class EmulatorService implements Service {
     public Map<String, Object> clearBreakpoint(String sessionId, String address) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
             // Parse the address
             Address addr = currentProgram.getAddressFactory().getAddress(address);
             if (addr == null) {
-                return createErrorResult("Invalid address: " + address);
+                return ResponseUtil.createErrorResponse("Invalid address: " + address);
             }
 
             // Remove the breakpoint from the session
@@ -624,9 +578,9 @@ public class EmulatorService implements Service {
             data.put("removed", removed);
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to clear breakpoint: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to clear breakpoint: " + e.getMessage());
         }
     }
 
@@ -639,7 +593,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getBreakpoints(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -651,9 +605,9 @@ public class EmulatorService implements Service {
             data.put("count", session.getBreakpoints().size());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get breakpoints: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get breakpoints: " + e.getMessage());
         }
     }
 
@@ -668,14 +622,14 @@ public class EmulatorService implements Service {
     public Map<String, Object> setConditionalBreakpoint(String sessionId, String address, String condition) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
             // Parse the address
             Address addr = currentProgram.getAddressFactory().getAddress(address);
             if (addr == null) {
-                return createErrorResult("Invalid address: " + address);
+                return ResponseUtil.createErrorResponse("Invalid address: " + address);
             }
 
             // Add the conditional breakpoint to the session
@@ -691,9 +645,9 @@ public class EmulatorService implements Service {
             data.put("message", "Conditional breakpoint set");
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to set conditional breakpoint: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to set conditional breakpoint: " + e.getMessage());
         }
     }
 
@@ -706,7 +660,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getConditionalBreakpoints(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -716,9 +670,9 @@ public class EmulatorService implements Service {
             data.put("count", session.getConditionalBreakpoints().size());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get conditional breakpoints: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get conditional breakpoints: " + e.getMessage());
         }
     }
 
@@ -732,7 +686,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> provideStdinData(String sessionId, String data) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -745,9 +699,9 @@ public class EmulatorService implements Service {
             responseData.put("length", data.length());
 
             // Return a standardized success response
-            return createSuccessResult(responseData);
+            return ResponseUtil.createSuccessResponse(responseData);
         } catch (Exception e) {
-            return createErrorResult("Failed to provide stdin data: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to provide stdin data: " + e.getMessage());
         }
     }
 
@@ -760,7 +714,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getStdoutContent(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -773,9 +727,9 @@ public class EmulatorService implements Service {
             data.put("length", stdout.length());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get stdout content: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get stdout content: " + e.getMessage());
         }
     }
 
@@ -788,7 +742,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getStderrContent(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -801,9 +755,9 @@ public class EmulatorService implements Service {
             data.put("length", stderr.length());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get stderr content: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get stderr content: " + e.getMessage());
         }
     }
 
@@ -818,7 +772,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> setRegisterValue(String sessionId, String register, String value) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -845,9 +799,9 @@ public class EmulatorService implements Service {
             data.put("decimal", registerValue.toString());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to set register value: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to set register value: " + e.getMessage());
         }
     }
 
@@ -861,7 +815,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getRegisterValue(String sessionId, String register) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -877,9 +831,9 @@ public class EmulatorService implements Service {
             data.put("decimal", registerValue.toString());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get register value: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get register value: " + e.getMessage());
         }
     }
 
@@ -892,7 +846,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getRegisters(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -947,9 +901,9 @@ public class EmulatorService implements Service {
             data.put("count", registers.size());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get registers: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get registers: " + e.getMessage());
         }
     }
 
@@ -962,7 +916,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getRegisterChanges(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -985,9 +939,9 @@ public class EmulatorService implements Service {
             data.put("count", changes.size());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get register changes: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get register changes: " + e.getMessage());
         }
     }
 
@@ -1002,13 +956,13 @@ public class EmulatorService implements Service {
     public Map<String, Object> readMemory(String sessionId, String address, int length) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         // Limit the number of bytes to read
         int maxLength = 4096;
         if (length > maxLength) {
-            return createErrorResult("Requested length exceeds maximum (" + maxLength + " bytes)");
+            return ResponseUtil.createErrorResponse("Requested length exceeds maximum (" + maxLength + " bytes)");
         }
 
         try {
@@ -1017,13 +971,13 @@ public class EmulatorService implements Service {
             // Parse the address
             Address addr = currentProgram.getAddressFactory().getAddress(address);
             if (addr == null) {
-                return createErrorResult("Invalid address: " + address);
+                return ResponseUtil.createErrorResponse("Invalid address: " + address);
             }
 
             // Read the memory
             byte[] bytes = emulator.readMemory(addr, length);
             if (bytes == null) {
-                return createErrorResult("Failed to read memory from address: " + address);
+                return ResponseUtil.createErrorResponse("Failed to read memory from address: " + address);
             }
 
             // Track the memory read
@@ -1031,17 +985,17 @@ public class EmulatorService implements Service {
 
             // Get the memory data in the old format
             Map<String, Object> memoryData = getResult(address, length, bytes);
-            
+
             // Return a standardized success response
-            return createSuccessResult(memoryData);
+            return ResponseUtil.createSuccessResponse(memoryData);
         } catch (Exception e) {
-            return createErrorResult("Failed to read memory: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to read memory: " + e.getMessage());
         }
     }
 
     /**
      * Creates a memory data result map without wrapping in success/error structure.
-     * 
+     *
      * @param address the address as a string
      * @param length the length of data
      * @param bytes the byte array
@@ -1079,7 +1033,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> writeMemory(String sessionId, String address, String bytesHex) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -1088,12 +1042,12 @@ public class EmulatorService implements Service {
             // Parse the address
             Address addr = currentProgram.getAddressFactory().getAddress(address);
             if (addr == null) {
-                return createErrorResult("Invalid address: " + address);
+                return ResponseUtil.createErrorResponse("Invalid address: " + address);
             }
 
             // Parse the hex string
             if (bytesHex.length() % 2 != 0) {
-                return createErrorResult("Invalid hex string length (must be even)");
+                return ResponseUtil.createErrorResponse("Invalid hex string length (must be even)");
             }
 
             byte[] bytes = new byte[bytesHex.length() / 2];
@@ -1104,7 +1058,7 @@ public class EmulatorService implements Service {
 
             // Write the memory
             emulator.writeMemory(addr, bytes);
-            
+
             // Since writeMemory() doesn't return success/failure, we assume it worked
             // if no exception was thrown
 
@@ -1117,9 +1071,9 @@ public class EmulatorService implements Service {
             data.put("bytesWritten", bytes.length);
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to write memory: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to write memory: " + e.getMessage());
         }
     }
 
@@ -1132,7 +1086,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getWrites(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -1177,9 +1131,9 @@ public class EmulatorService implements Service {
             data.put("totalBytes", memoryWrites.size());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get memory writes: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get memory writes: " + e.getMessage());
         }
     }
 
@@ -1192,7 +1146,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getReads(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -1239,9 +1193,9 @@ public class EmulatorService implements Service {
             data.put("totalBytes", memoryReads.size());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get memory reads: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get memory reads: " + e.getMessage());
         }
     }
 
@@ -1255,7 +1209,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> setMemoryReadTracking(String sessionId, boolean enable) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -1268,9 +1222,9 @@ public class EmulatorService implements Service {
             data.put("message", "Memory read tracking " + (enable ? "enabled" : "disabled"));
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to set memory read tracking: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to set memory read tracking: " + e.getMessage());
         }
     }
 
@@ -1284,7 +1238,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> setStackChangeTracking(String sessionId, boolean enable) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -1297,9 +1251,9 @@ public class EmulatorService implements Service {
             data.put("message", "Stack change tracking " + (enable ? "enabled" : "disabled"));
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to set stack change tracking: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to set stack change tracking: " + e.getMessage());
         }
     }
 
@@ -1312,7 +1266,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> getStackTrace(String sessionId) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -1325,9 +1279,9 @@ public class EmulatorService implements Service {
             data.put("count", stackTrace.size());
 
             // Return a standardized success response
-            return createSuccessResult(data);
+            return ResponseUtil.createSuccessResponse(data);
         } catch (Exception e) {
-            return createErrorResult("Failed to get stack trace: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to get stack trace: " + e.getMessage());
         }
     }
 
@@ -1343,7 +1297,7 @@ public class EmulatorService implements Service {
     public Map<String, Object> importMemory(String sessionId, String fromAddress, String length) {
         EmulatorSession session = getSession(sessionId);
         if (session == null) {
-            return createErrorResult("Invalid session ID: " + sessionId);
+            return ResponseUtil.createErrorResponse("Invalid session ID: " + sessionId);
         }
 
         try {
@@ -1352,7 +1306,7 @@ public class EmulatorService implements Service {
             // Parse the address
             Address addr = currentProgram.getAddressFactory().getAddress(fromAddress);
             if (addr == null) {
-                return createErrorResult("Invalid address: " + fromAddress);
+                return ResponseUtil.createErrorResponse("Invalid address: " + fromAddress);
             }
 
             // Parse the length
@@ -1364,19 +1318,19 @@ public class EmulatorService implements Service {
                     len = Integer.parseInt(length);
                 }
             } catch (NumberFormatException e) {
-                return createErrorResult("Invalid length: " + length);
+                return ResponseUtil.createErrorResponse("Invalid length: " + length);
             }
 
             // Limit the size of the import
             int maxLength = 16384; // 16KB
             if (len > maxLength) {
-                return createErrorResult("Requested length exceeds maximum (" + maxLength + " bytes)");
+                return ResponseUtil.createErrorResponse("Requested length exceeds maximum (" + maxLength + " bytes)");
             }
 
             // Read the memory from the emulator
             byte[] bytes = emulator.readMemory(addr, len);
             if (bytes == null) {
-                return createErrorResult("Failed to read memory from emulator");
+                return ResponseUtil.createErrorResponse("Failed to read memory from emulator");
             }
 
             // Write the memory to the program
@@ -1391,12 +1345,12 @@ public class EmulatorService implements Service {
                 data.put("toAddress", addr.add(bytesWritten - 1).toString());
 
                 // Return a standardized success response
-                return createSuccessResult(data);
+                return ResponseUtil.createSuccessResponse(data);
             } catch (Exception e) {
-                return createErrorResult("Failed to write memory to program: " + e.getMessage());
+                return ResponseUtil.createErrorResponse("Failed to write memory to program: " + e.getMessage());
             }
         } catch (Exception e) {
-            return createErrorResult("Failed to import memory: " + e.getMessage());
+            return ResponseUtil.createErrorResponse("Failed to import memory: " + e.getMessage());
         }
     }
 

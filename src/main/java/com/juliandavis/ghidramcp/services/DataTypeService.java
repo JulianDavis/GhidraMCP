@@ -105,10 +105,10 @@ public class DataTypeService implements Service {
     private Map<String, Object> createErrorResponse(String errorMessage) {
         return createErrorResponse(errorMessage, 400);
     }
-    
+
     /**
      * Creates a standardized error response
-     * 
+     *
      * @param errorMessage The error message
      * @param errorCode Optional error code
      * @return Map representing the error response
@@ -116,32 +116,32 @@ public class DataTypeService implements Service {
     private Map<String, Object> createErrorResponse(String errorMessage, int errorCode) {
         Map<String, Object> response = new HashMap<>();
         Map<String, Object> errorDetails = new HashMap<>();
-        
+
         // Standard top-level structure
         response.put("status", "error");
-        
+
         // Error details
         errorDetails.put("message", errorMessage);
         errorDetails.put("code", errorCode);
-        
+
         response.put("error", errorDetails);
-        
+
         return response;
     }
-    
+
     /**
      * Creates a standardized success response
-     * 
+     *
      * @param data The data to include in the response
      * @return Map representing the success response
      */
     private Map<String, Object> createSuccessResponse(Map<String, Object> data) {
         Map<String, Object> response = new HashMap<>();
-        
+
         // Standard top-level structure
         response.put("status", "success");
         response.put("data", data);
-        
+
         return response;
     }
 
@@ -357,7 +357,7 @@ public class DataTypeService implements Service {
 
         // Start a transaction
         int transactionID = program.startTransaction("Create Structure Data Type");
-        
+
         try {
             // Check if the structure already exists
             DataTypeManager dataTypeManager = program.getDataTypeManager();
@@ -387,16 +387,17 @@ public class DataTypeService implements Service {
             }
 
             // Add the structure to the data type manager
-            StructureDataType addedStructure = (StructureDataType) dataTypeManager.addDataType(
+            // addDataType returns the resolved DataType, which might be StructureDB
+            Structure addedStructure = (Structure) dataTypeManager.addDataType(
                     structureDataType,
                     DataTypeConflictHandler.DEFAULT_HANDLER);
 
             // Create success response
             Map<String, Object> result = getStructureInfoMap(addedStructure);
-            
+
             // End transaction with commit
             program.endTransaction(transactionID, true);
-            
+
             return result;
         } catch (Exception e) {
             // End transaction with rollback in case of error
@@ -406,7 +407,7 @@ public class DataTypeService implements Service {
         }
     }
 
-    private Map<String, Object> getStructureInfoMap(StructureDataType structure) {
+    private Map<String, Object> getStructureInfoMap(Structure structure) {
         // Create data for the success response
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("name", structure.getName());
@@ -419,7 +420,7 @@ public class DataTypeService implements Service {
         if (structure.getDescription() != null) {
             responseData.put("description", structure.getDescription());
         }
-        
+
         // Return standardized success response
         return createSuccessResponse(responseData);
     }
@@ -447,7 +448,7 @@ public class DataTypeService implements Service {
 
         // Start a transaction
         int transactionID = program.startTransaction("Add Field To Structure");
-        
+
         try {
             // Find the structure
             DataType structureType = findDataType(structureName);
@@ -517,7 +518,7 @@ public class DataTypeService implements Service {
             }
 
             responseData.put("structureSize", structure.getLength());
-            
+
             // End transaction with commit
             program.endTransaction(transactionID, true);
 
@@ -548,7 +549,7 @@ public class DataTypeService implements Service {
 
         // Start a transaction
         int transactionID = program.startTransaction("Apply Structure To Memory");
-        
+
         try {
             Address address = program.getAddressFactory().getAddress(addressStr);
             if (address == null) {
@@ -597,10 +598,10 @@ public class DataTypeService implements Service {
             }
 
             responseData.put("fields", fields);
-            
+
             // End transaction with commit
             program.endTransaction(transactionID, true);
-            
+
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
@@ -641,12 +642,12 @@ public class DataTypeService implements Service {
                 // Return error response if deletion failed
                 return createErrorResponse("Failed to delete data type: " + dataTypeName + ". It may be in use or protected.");
             }
-            
+
             // Create data for the success response
             Map<String, Object> responseData = new HashMap<>();
             responseData.put("dataTypeName", dataTypeName);
             responseData.put("deleted", true);
-            
+
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
@@ -734,7 +735,7 @@ public class DataTypeService implements Service {
             if (categoryPath != null && !categoryPath.isEmpty()) {
                 responseData.put("categoryPath", categoryPath);
             }
-            
+
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
@@ -821,7 +822,7 @@ public class DataTypeService implements Service {
 
         // Start a transaction
         int transactionID = program.startTransaction("Create Enum Data Type");
-        
+
         try {
             // Validate valueSize
             if (valueSize != 1 && valueSize != 2 && valueSize != 4 && valueSize != 8) {
@@ -874,7 +875,7 @@ public class DataTypeService implements Service {
                 enumValues.put(name, addedEnum.getValue(name));
             }
             responseData.put("values", enumValues);
-            
+
             // End transaction with commit
             program.endTransaction(transactionID, true);
 

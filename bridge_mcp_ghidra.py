@@ -892,7 +892,7 @@ def rename_variable(function_name: str, variable_name: str, new_name: str) -> Di
             else:
                 logger.error(f"Failed to rename variable: {response.get('error', response)}")
                 # Return the error structure using ErrorResult for consistency
-                return ErrorResult.from_dict(response).to_dict()
+                return ErrorResult.from_dict(response).error
         else:
              # Assume success if no status field but it's a dict (legacy?)
              logger.warning("Received non-standard success response for rename_variable.")
@@ -900,7 +900,7 @@ def rename_variable(function_name: str, variable_name: str, new_name: str) -> Di
     else:
         logger.error(f"Received unexpected response type for rename_variable: {type(response)}")
         # Convert string/other response to dict for consistency
-        return ErrorResult.from_string(f"Unexpected response type: {str(response)}").to_dict()
+        return ErrorResult.from_string(f"Unexpected response type: {str(response)}").error
 
 @mcp.tool()
 def list_segments(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
