@@ -355,11 +355,15 @@ public class DataTypeService implements Service {
             return createErrorResponse("No program loaded");
         }
 
+        // Start a transaction
+        int transactionID = program.startTransaction("Create Structure Data Type");
+        
         try {
             // Check if the structure already exists
             DataTypeManager dataTypeManager = program.getDataTypeManager();
             DataType existingType = findDataType(structureName);
             if (existingType != null) {
+                program.endTransaction(transactionID, false); // End transaction with rollback
                 return createErrorResponse("Structure already exists: " + structureName);
             }
 
@@ -388,8 +392,15 @@ public class DataTypeService implements Service {
                     DataTypeConflictHandler.DEFAULT_HANDLER);
 
             // Create success response
-            return getStructureInfoMap(addedStructure);
+            Map<String, Object> result = getStructureInfoMap(addedStructure);
+            
+            // End transaction with commit
+            program.endTransaction(transactionID, true);
+            
+            return result;
         } catch (Exception e) {
+            // End transaction with rollback in case of error
+            program.endTransaction(transactionID, false);
             Msg.error(this, "Error creating structure data type", e);
             return createErrorResponse("Error creating structure: " + e.getMessage());
         }
@@ -434,20 +445,26 @@ public class DataTypeService implements Service {
             return createErrorResponse("No program loaded");
         }
 
+        // Start a transaction
+        int transactionID = program.startTransaction("Add Field To Structure");
+        
         try {
             // Find the structure
             DataType structureType = findDataType(structureName);
             if (structureType == null) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Structure not found: " + structureName);
             }
 
             if (!(structureType instanceof Structure structure)) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Data type is not a structure: " + structureName);
             }
 
             // Find the field data type
             DataType fieldType = findDataType(fieldTypeName);
             if (fieldType == null) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Field data type not found: " + fieldTypeName);
             }
 
@@ -467,6 +484,7 @@ public class DataTypeService implements Service {
                     structure.insertAtOffset(currentLength, fieldType, fieldType.getLength(), fieldName, comment);
                 } else {
                     // For non-append operations, propagate the exception with more context
+                    program.endTransaction(transactionID, false); // Rollback
                     throw new IllegalArgumentException("Could not insert field '" + fieldName +
                             "' at offset " + offset + ": " + e.getMessage(), e);
                 }
@@ -499,10 +517,15 @@ public class DataTypeService implements Service {
             }
 
             responseData.put("structureSize", structure.getLength());
+            
+            // End transaction with commit
+            program.endTransaction(transactionID, true);
 
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
+            // End transaction with rollback in case of error
+            program.endTransaction(transactionID, false);
             Msg.error(this, "Error adding field to structure", e);
             return createErrorResponse("Error adding field to structure: " + e.getMessage());
         }
@@ -523,25 +546,32 @@ public class DataTypeService implements Service {
             return createErrorResponse("No program loaded");
         }
 
+        // Start a transaction
+        int transactionID = program.startTransaction("Apply Structure To Memory");
+        
         try {
             Address address = program.getAddressFactory().getAddress(addressStr);
             if (address == null) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Invalid address: " + addressStr);
             }
 
             // Find the structure
             DataType structureType = findDataType(structureName);
             if (structureType == null) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Structure not found: " + structureName);
             }
 
             if (!(structureType instanceof Structure)) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Data type is not a structure: " + structureName);
             }
 
             // Apply the structure to memory
             Data data = program.getListing().createData(address, structureType);
             if (data == null) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Failed to apply structure at address " + addressStr);
             }
 
@@ -568,9 +598,14 @@ public class DataTypeService implements Service {
 
             responseData.put("fields", fields);
             
+            // End transaction with commit
+            program.endTransaction(transactionID, true);
+            
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
+            // End transaction with rollback in case of error
+            program.endTransaction(transactionID, false);
             Msg.error(this, "Error applying structure to memory", e);
             return createErrorResponse("Error applying structure: " + e.getMessage());
         }
@@ -784,9 +819,13 @@ public class DataTypeService implements Service {
             return createErrorResponse("No program loaded");
         }
 
+        // Start a transaction
+        int transactionID = program.startTransaction("Create Enum Data Type");
+        
         try {
             // Validate valueSize
             if (valueSize != 1 && valueSize != 2 && valueSize != 4 && valueSize != 8) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Invalid enum value size. Must be 1, 2, 4, or 8 bytes.");
             }
 
@@ -794,6 +833,7 @@ public class DataTypeService implements Service {
             DataTypeManager dataTypeManager = program.getDataTypeManager();
             DataType existingType = findDataType(enumName);
             if (existingType != null) {
+                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Enum already exists: " + enumName);
             }
 
@@ -834,10 +874,15 @@ public class DataTypeService implements Service {
                 enumValues.put(name, addedEnum.getValue(name));
             }
             responseData.put("values", enumValues);
+            
+            // End transaction with commit
+            program.endTransaction(transactionID, true);
 
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
+            // End transaction with rollback in case of error
+            program.endTransaction(transactionID, false);
             Msg.error(this, "Error creating enum data type", e);
             return createErrorResponse("Error creating enum: " + e.getMessage());
         }

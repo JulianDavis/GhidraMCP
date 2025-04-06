@@ -573,6 +573,150 @@ public class DecompileService implements Service {
         }
     }
 
+
+/**
+ * Rename a variable within a function's decompiled view.
+ *
+ * @param functionName The name of the function containing the variable.
+ * @param variableName The current name of the variable to rename.
+ * @param newName      The new name for the variable.
+ * @return Map containing the result of the rename operation.
+ */
+public Map<String, Object> renameVariableInFunction(String functionName, String variableName, String newName) {
+    if (program == null) {
+        return createErrorResponse("No program loaded");
+    }
+
+    if (functionName == null || functionName.isEmpty()) {
+        return createErrorResponse("Function name is required");
+    }
+
+    if (variableName == null || variableName.isEmpty()) {
+        return createErrorResponse("Current variable name is required");
+    }
+
+    if (newName == null || newName.isEmpty()) {
+        return createErrorResponse("New variable name is required");
+    }
+
+    // Validate the new name
+    if (!isValidSymbolName(newName)) {
+        return createErrorResponse("Invalid new variable name: " + newName);
+    }
+
+    DecompInterface decomp = null;
+    boolean success = false;
+    String message = "Variable rename failed";
+    Symbol targetSymbol = null;
+    Function function = null;
+
+    try {
+        // Find the function by name
+        for (Function func : program.getFunctionManager().getFunctions(true)) {
+            if (func.getName().equals(functionName)) {
+                function = func;
+                break;
+            }
+        }
+
+        if (function == null) {
+            return createErrorResponse("Function not found: " + functionName);
+        }
+
+        // Decompile to get HighFunction
+        decomp = new DecompInterface();
+        decomp.openProgram(program);
+        DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+
+        if (results == null || !results.decompileCompleted()) {
+            String errorMsg = results != null ? results.getErrorMessage() : "Unknown decompilation error";
+            return createErrorResponse("Decompilation failed for function '" + functionName + "': " + errorMsg);
+        }
+
+        ghidra.program.model.pcode.HighFunction highFunction = results.getHighFunction();
+        if (highFunction == null) {
+            return createErrorResponse("Could not get HighFunction for '" + functionName + "'");
+        }
+
+        // Find the symbol (variable) by name
+        ghidra.program.model.pcode.LocalSymbolMap symbolMap = highFunction.getLocalSymbolMap();
+        Iterator<ghidra.program.model.pcode.HighSymbol> symbolIterator = symbolMap.getSymbols(); // Get iterator
+        while (symbolIterator.hasNext()) { // Use while loop
+            ghidra.program.model.pcode.HighSymbol highSymbol = symbolIterator.next();
+             // Check if it's a parameter or a local stack variable
+            if (highSymbol.isParameter() || (highSymbol.getStorage().isStackStorage() && !highSymbol.isParameter())) {
+                if (highSymbol.getName().equals(variableName)) {
+                    // Found the symbol, now get the underlying Symbol object to rename
+                    targetSymbol = highSymbol.getSymbol();
+                    break; // Exit the while loop
+                }
+            }
+        }
+
+
+        if (targetSymbol == null) {
+            return createErrorResponse("Variable '" + variableName + "' not found in function '" + functionName + "'");
+        }
+
+        // Attempt to rename the symbol within a transaction
+        int tx = program.startTransaction("Rename variable " + variableName + " to " + newName + " in " + functionName);
+        try {
+            targetSymbol.setName(newName, SourceType.USER_DEFINED);
+            success = true; // Assume success if no exception
+            message = "Variable '" + variableName + "' renamed to '" + newName + "' successfully";
+            Msg.info(this, message + " in function " + functionName);
+        } catch (ghidra.util.exception.InvalidInputException e) {
+            message = "Rename failed: Invalid name '" + newName + "'. " + e.getMessage();
+            Msg.error(this, message, e);
+            success = false;
+        } catch (Exception e) {
+            message = "Rename failed: " + e.getMessage();
+            Msg.error(this, message, e);
+            success = false;
+        } finally {
+            program.endTransaction(tx, success);
+        }
+
+    } catch (Exception e) {
+        message = "Error renaming variable: " + e.getMessage();
+        Msg.error(this, message, e);
+        success = false;
+    } finally {
+        if (decomp != null) {
+            decomp.dispose();
+        }
+    }
+
+    // Prepare response
+    Map<String, Object> response = new HashMap<>();
+    response.put("success", success);
+    response.put("functionName", functionName);
+    response.put("variableName", variableName);
+    response.put("newName", newName);
+    response.put("message", message);
+
+    if (success && targetSymbol != null) {
+         Map<String, Object> symbolDetails = new HashMap<>();
+         symbolDetails.put("name", targetSymbol.getName());
+         symbolDetails.put("address", targetSymbol.getAddress().toString());
+         symbolDetails.put("type", targetSymbol.getSymbolType().toString());
+         response.put("symbol", symbolDetails);
+    }
+
+
+    if (success) {
+        return createSuccessResponse(response);
+    } else {
+        // Use the existing error response structure but add context
+        Map<String, Object> errorData = new HashMap<>();
+        errorData.put("functionName", functionName);
+        errorData.put("variableName", variableName);
+        errorData.put("newName", newName);
+        // Need to check how createErrorResponse handles extra data or create a new helper
+        return createErrorResponse(message); // Simplified for now
+    }
+}
+
     /**
      * Get detailed information about a function
      *

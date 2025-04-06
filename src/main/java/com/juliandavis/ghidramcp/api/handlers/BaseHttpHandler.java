@@ -268,32 +268,64 @@ public abstract class BaseHttpHandler {
      * @throws IOException if an I/O error occurs
      */
     protected Map<String, String> parsePostParams(HttpExchange exchange) throws IOException {
-        String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        // Save the original input stream
+        byte[] requestBodyBytes = exchange.getRequestBody().readAllBytes();
+        String requestBody = new String(requestBodyBytes, StandardCharsets.UTF_8);
         Map<String, String> postParams = new HashMap<>();
         
-        if (!requestBody.isEmpty()) {
-            for (String param : requestBody.split("&")) {
-                String[] pair = param.split("=");
-                if (pair.length > 1) {
-                    // URL decode the parameter value
-                    try {
-                        String key = java.net.URLDecoder.decode(pair[0], StandardCharsets.UTF_8);
-                        String value = java.net.URLDecoder.decode(pair[1], StandardCharsets.UTF_8);
-                        postParams.put(key, value);
-                    } catch (IllegalArgumentException e) {
-                        // Log malformed URL encoding but continue
-                        Msg.warn(this, "Malformed URL encoding in POST parameter: " + param);
-                        postParams.put(pair[0], pair[1]);
-                    }
-                } else {
-                    try {
-                        postParams.put(java.net.URLDecoder.decode(pair[0], StandardCharsets.UTF_8), "");
-                    } catch (IllegalArgumentException e) {
-                        // Log malformed URL encoding but continue
-                        Msg.warn(this, "Malformed URL encoding in POST parameter: " + param);
-                        postParams.put(pair[0], "");
+        // Check content type to handle JSON
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (contentType != null && contentType.toLowerCase().contains("json")) {
+            try {
+                // Try to parse as JSON first
+                Map<String, Object> jsonMap = plugin.getGson().fromJson(requestBody,
+                        new com.google.gson.reflect.TypeToken<Map<String, Object>>(){}.getType());
+                
+                // Convert all values to strings
+                for (Map.Entry<String, Object> entry : jsonMap.entrySet()) {
+                    if (entry.getValue() != null) {
+                        postParams.put(entry.getKey(), String.valueOf(entry.getValue()));
                     }
                 }
+                
+                Msg.debug(this, "Successfully parsed JSON request body");
+                return postParams;
+            } catch (Exception e) {
+                Msg.warn(this, "Failed to parse JSON in POST request: " + e.getMessage());
+                // Fall through to try form data parsing as a fallback
+            }
+        }
+        
+        // Parse as form-encoded data (fallback or default)
+        if (!requestBody.isEmpty()) {
+            // Check if it looks like form data
+            if (requestBody.contains("=")) {
+                for (String param : requestBody.split("&")) {
+                    String[] pair = param.split("=", 2);  // Limit to 2 parts
+                    if (pair.length > 1) {
+                        // URL decode the parameter value
+                        try {
+                            String key = java.net.URLDecoder.decode(pair[0], StandardCharsets.UTF_8);
+                            String value = java.net.URLDecoder.decode(pair[1], StandardCharsets.UTF_8);
+                            postParams.put(key, value);
+                        } catch (IllegalArgumentException e) {
+                            // Log malformed URL encoding but continue
+                            Msg.warn(this, "Malformed URL encoding in POST parameter: " + param);
+                            postParams.put(pair[0], pair[1]);
+                        }
+                    } else if (pair.length == 1) {
+                        try {
+                            postParams.put(java.net.URLDecoder.decode(pair[0], StandardCharsets.UTF_8), "");
+                        } catch (IllegalArgumentException e) {
+                            // Log malformed URL encoding but continue
+                            Msg.warn(this, "Malformed URL encoding in POST parameter: " + param);
+                            postParams.put(pair[0], "");
+                        }
+                    }
+                }
+            } else {
+                // Plain text or other format - use as a single value
+                postParams.put("data", requestBody);
             }
         }
         

@@ -185,11 +185,37 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             return;
         }
         
-        Map<String, String> params = parsePostParams(exchange);
+        // Check content-type header
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        Map<String, String> params;
+        
+        if (contentType != null && contentType.toLowerCase().contains("json")) {
+            // Parse as JSON
+            Map<String, Object> jsonParams = parseJsonRequest(exchange);
+            
+            // Convert to string params
+            params = new HashMap<>();
+            for (Map.Entry<String, Object> entry : jsonParams.entrySet()) {
+                if (entry.getValue() != null) {
+                    params.put(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+            }
+        } else {
+            // Parse as form data (the traditional way)
+            params = parsePostParams(exchange);
+        }
+        
+        // Extract parameters
         String name = params.get("name");
         String description = params.get("description");
         boolean packed = Boolean.parseBoolean(params.getOrDefault("packed", "false"));
         int alignment = parseIntOrDefault(params.get("alignment"), 0);
+        
+        // Debug log the parameters
+        Msg.debug(this, "createStructureDataType parameters: name=" + name + 
+                 ", description=" + description + 
+                 ", packed=" + packed + 
+                 ", alignment=" + alignment);
         
         // Validate required parameters
         if (name == null) {
@@ -210,11 +236,36 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             return;
         }
         
-        Map<String, String> params = parsePostParams(exchange);
+        // Check content-type header
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        Map<String, String> params;
+        
+        if (contentType != null && contentType.toLowerCase().contains("json")) {
+            // Parse as JSON
+            Map<String, Object> jsonParams = parseJsonRequest(exchange);
+            
+            // Convert to string params
+            params = new HashMap<>();
+            for (Map.Entry<String, Object> entry : jsonParams.entrySet()) {
+                if (entry.getValue() != null) {
+                    params.put(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+            }
+        } else {
+            // Parse as form data (the traditional way)
+            params = parsePostParams(exchange);
+        }
+        
         String structureName = params.get("structureName");
         String fieldName = params.get("fieldName");
         String fieldType = params.get("fieldType");
         String comment = params.get("comment");
+        
+        // Debug log the parameters
+        Msg.debug(this, "addFieldToStructure parameters: structureName=" + structureName + 
+                 ", fieldName=" + fieldName + 
+                 ", fieldType=" + fieldType + 
+                 ", comment=" + comment);
         
         // Validate required parameters
         if (structureName == null || fieldName == null || fieldType == null) {
