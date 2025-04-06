@@ -549,6 +549,65 @@ Identify if a function exists at a specified address.
 }
 ```
 
+### POST /set_function_prototype
+
+Set a function prototype (signature) for a function.
+
+**Request**:
+
+```json
+{
+  "functionName": "process_packet",
+  "returnType": "int",
+  "parameters": [
+    {
+      "name": "packetHeader",
+      "type": "/MyCustomTypes/Network/MyPacketHeader*"
+    },
+    {
+      "name": "processImmediately",
+      "type": "bool"
+    }
+  ],
+  "callingConvention": "__cdecl",
+  "forceUpdate": true
+}
+```
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "success": true,
+    "message": "Function prototype updated successfully",
+    "functionName": "process_packet",
+    "function": {
+      "name": "process_packet",
+      "address": "0x401500",
+      "signature": "int process_packet(MyPacketHeader *packetHeader, bool processImmediately)",
+      "returnType": "int",
+      "parameterCount": 2,
+      "namespace": "global",
+      "callingConvention": "__cdecl",
+      "parameters": [
+        {
+          "name": "packetHeader", 
+          "dataType": "MyPacketHeader *", 
+          "ordinal": 0
+        },
+        {
+          "name": "processImmediately", 
+          "dataType": "bool", 
+          "ordinal": 1
+        }
+      ]
+    }
+  }
+}
+```
+
 ## Memory Endpoints
 
 These endpoints provide access to memory operations and searching capabilities.

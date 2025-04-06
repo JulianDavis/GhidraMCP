@@ -117,6 +117,10 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         // Number Conversion services
         NumberConversionServiceInitializer numberConversionInitializer = new NumberConversionServiceInitializer(this, serviceRegistry, endpointRegistry);
         numberConversionInitializer.initialize();
+        
+        // Function Prototype services
+        FunctionPrototypeServiceInitializer functionPrototypeInitializer = new FunctionPrototypeServiceInitializer(this, serviceRegistry, endpointRegistry);
+        functionPrototypeInitializer.initialize();
     }
     
     private void startServer() {

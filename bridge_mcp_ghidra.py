@@ -1214,6 +1214,52 @@ def get_complete_function_stats() -> Dict[str, Any]:
     return all_stats
 
 @mcp.tool()
+def set_function_prototype(function_name: str, return_type: str, parameters: List[Dict[str, str]], 
+                          calling_convention: str = None, force_update: bool = False) -> Dict[str, Any]:
+    """
+    Set a function prototype (signature) for a function.
+    
+    Args:
+        function_name: The name of the function to modify
+        return_type: The return type name
+        parameters: List of parameter definitions (name and type pairs)
+        calling_convention: Optional calling convention (can be null to keep existing)
+        force_update: Whether to force update even if parameters might be incompatible
+        
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    if not function_name:
+        logger.error("Function name is required")
+        return {"status": "error", "error": {"message": "Function name is required"}}
+        
+    if not return_type:
+        logger.error("Return type is required")
+        return {"status": "error", "error": {"message": "Return type is required"}}
+        
+    # Construct the request payload
+    payload = {
+        "functionName": function_name,
+        "returnType": return_type,
+        "parameters": parameters,
+        "forceUpdate": force_update
+    }
+    
+    # Add calling convention if specified
+    if calling_convention:
+        payload["callingConvention"] = calling_convention
+        
+    # Send the request
+    response = safe_post("set_function_prototype", payload)
+    
+    if isinstance(response, dict):
+        if "status" in response and response.get("status") == "success":
+            return response
+        return response
+    else:
+        return {"status": "error", "error": {"message": "Unexpected response format"}}
+
+@mcp.tool()
 def get_complete_symbol_stats(symbol_type: str = None) -> Dict[str, Any]:
     """
     Get complete symbol statistics, handling pagination automatically.
