@@ -75,10 +75,27 @@ public class DataTypeService implements Service {
                 return createErrorResponse("Unknown or unsupported data type: " + dataTypeName);
             }
 
-            // Create the data
-            Data data = program.getListing().createData(address, dataType);
-            if (data == null) {
-                return createErrorResponse("Failed to create data at address " + addressStr);
+            // Start transaction
+            int txId = program.startTransaction("Create Primitive Data Type: " + dataTypeName);
+            boolean success = false;
+            Data data = null;
+            try {
+                // Create the data
+                data = program.getListing().createData(address, dataType);
+                if (data == null) {
+                    // Throw exception if data creation fails within transaction
+                    throw new Exception("program.getListing().createData returned null");
+                }
+                success = true; // Mark success if no exception
+            } finally {
+                // End transaction, commit only if success is true
+                program.endTransaction(txId, success);
+            }
+
+            // If we reach here and success is false, an exception was caught and handled below
+            if (!success) {
+                 // This case should ideally be caught by the exception handler, but as a fallback:
+                 return createErrorResponse("Failed to create primitive data at address " + addressStr + " (transaction rolled back)");
             }
 
             // Create data for the success response
@@ -256,10 +273,23 @@ public class DataTypeService implements Service {
                 }
             }
 
-            // Create the data
-            Data data = program.getListing().createData(address, dataType);
-            if (data == null) {
-                return createErrorResponse("Failed to create string data at address " + addressStr);
+            // Start transaction
+            int txId = program.startTransaction("Create String Data Type: " + stringType);
+            boolean success = false;
+            Data data = null;
+            try {
+                // Create the data
+                data = program.getListing().createData(address, dataType);
+                if (data == null) {
+                    throw new Exception("program.getListing().createData returned null");
+                }
+                success = true;
+            } finally {
+                program.endTransaction(txId, success);
+            }
+
+            if (!success) {
+                 return createErrorResponse("Failed to create string data at address " + addressStr + " (transaction rolled back)");
             }
 
             // Create data for the success response
@@ -314,10 +344,23 @@ public class DataTypeService implements Service {
             // Create the array data type
             ArrayDataType arrayDataType = new ArrayDataType(elementType, numElements, elementType.getLength());
 
-            // Create the data
-            Data data = program.getListing().createData(address, arrayDataType);
-            if (data == null) {
-                return createErrorResponse("Failed to create array data at address " + addressStr);
+            // Start transaction
+            int txId = program.startTransaction("Create Array Data Type: " + elementTypeName);
+            boolean success = false;
+            Data data = null;
+            try {
+                // Create the data
+                data = program.getListing().createData(address, arrayDataType);
+                if (data == null) {
+                    throw new Exception("program.getListing().createData returned null");
+                }
+                success = true;
+            } finally {
+                program.endTransaction(txId, success);
+            }
+
+            if (!success) {
+                 return createErrorResponse("Failed to create array data at address " + addressStr + " (transaction rolled back)");
             }
 
             // Create data for the success response
@@ -446,28 +489,33 @@ public class DataTypeService implements Service {
             return createErrorResponse("No program loaded");
         }
 
-        // Start a transaction
-        int transactionID = program.startTransaction("Add Field To Structure");
+        int transactionID = -1; // Initialize transaction ID
+        boolean success = false; // Flag to track success for commit/rollback
+        DataTypeComponent component = null; // Declare component here for scope
+        Structure structure = null; // Declare structure here for scope
 
         try {
-            // Find the structure
+            // Find structure and field type *before* starting transaction
             DataType structureType = findDataType(structureName);
             if (structureType == null) {
-                program.endTransaction(transactionID, false); // Rollback
+                // No transaction started yet, just return error
                 return createErrorResponse("Structure not found: " + structureName);
             }
 
-            if (!(structureType instanceof Structure structure)) {
-                program.endTransaction(transactionID, false); // Rollback
+            if (!(structureType instanceof Structure)) {
+                 // No transaction started yet, just return error
                 return createErrorResponse("Data type is not a structure: " + structureName);
             }
+            structure = (Structure) structureType; // Assign to broader scope variable
 
-            // Find the field data type
             DataType fieldType = findDataType(fieldTypeName);
             if (fieldType == null) {
-                program.endTransaction(transactionID, false); // Rollback
+                 // No transaction started yet, just return error
                 return createErrorResponse("Field data type not found: " + fieldTypeName);
             }
+
+            // Now start the transaction before modifying the structure
+            transactionID = program.startTransaction("Add Field To Structure: " + fieldName);
 
             // Add the field to the structure at the specified offset
             int length = fieldType.getLength();
@@ -485,14 +533,14 @@ public class DataTypeService implements Service {
                     structure.insertAtOffset(currentLength, fieldType, fieldType.getLength(), fieldName, comment);
                 } else {
                     // For non-append operations, propagate the exception with more context
-                    program.endTransaction(transactionID, false); // Rollback
+                    // Don't end transaction here, let finally block handle rollback
                     throw new IllegalArgumentException("Could not insert field '" + fieldName +
                             "' at offset " + offset + ": " + e.getMessage(), e);
                 }
             }
 
             // Find the added component
-            DataTypeComponent component = null;
+            // component declared earlier
             for (int i = 0; i < structure.getNumComponents(); i++) {
                 DataTypeComponent comp = structure.getComponent(i);
                 if (comp.getFieldName() != null && comp.getFieldName().equals(fieldName)) {
@@ -519,16 +567,21 @@ public class DataTypeService implements Service {
 
             responseData.put("structureSize", structure.getLength());
 
-            // End transaction with commit
-            program.endTransaction(transactionID, true);
+            // Mark success for commit in finally block
+            success = true;
 
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
-            // End transaction with rollback in case of error
-            program.endTransaction(transactionID, false);
+            // Success flag remains false for rollback
             Msg.error(this, "Error adding field to structure", e);
+            // Return error response from within the catch block
             return createErrorResponse("Error adding field to structure: " + e.getMessage());
+        } finally {
+            // Ensure transaction is always ended properly
+            if (transactionID != -1) {
+                program.endTransaction(transactionID, success); // Commits only if success is true
+            }
         }
     }
 
@@ -547,36 +600,37 @@ public class DataTypeService implements Service {
             return createErrorResponse("No program loaded");
         }
 
-        // Start a transaction
-        int transactionID = program.startTransaction("Apply Structure To Memory");
+        int transactionID = -1; // Initialize transaction ID
+        boolean success = false; // Flag for commit/rollback
+        Data data = null; // Declare data here for scope
 
         try {
+            // Perform checks *before* starting transaction
             Address address = program.getAddressFactory().getAddress(addressStr);
             if (address == null) {
-                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Invalid address: " + addressStr);
             }
 
-            // Find the structure
             DataType structureType = findDataType(structureName);
             if (structureType == null) {
-                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Structure not found: " + structureName);
             }
 
             if (!(structureType instanceof Structure)) {
-                program.endTransaction(transactionID, false); // Rollback
                 return createErrorResponse("Data type is not a structure: " + structureName);
             }
 
-            // Apply the structure to memory
-            Data data = program.getListing().createData(address, structureType);
-            if (data == null) {
-                program.endTransaction(transactionID, false); // Rollback
-                return createErrorResponse("Failed to apply structure at address " + addressStr);
-            }
+            // Now start transaction before applying structure
+            transactionID = program.startTransaction("Apply Structure To Memory: " + structureName);
 
-            // Create data for the success response
+            // Apply the structure to memory inside the transaction
+            data = program.getListing().createData(address, structureType);
+            if (data == null) {
+                throw new Exception("program.getListing().createData returned null");
+            }
+            success = true; // Mark success only if createData succeeded
+
+            // Prepare success response data *after* successful creation
             Map<String, Object> responseData = new HashMap<>();
             responseData.put("address", addressStr);
             responseData.put("structureName", structureName);
@@ -596,20 +650,23 @@ public class DataTypeService implements Service {
                     fields.add(field);
                 }
             }
-
             responseData.put("fields", fields);
 
-            // End transaction with commit
-            program.endTransaction(transactionID, true);
-
-            // Return standardized success response
+            // Return success response from within the try block
             return createSuccessResponse(responseData);
+
         } catch (Exception e) {
-            // End transaction with rollback in case of error
-            program.endTransaction(transactionID, false);
+            // Log error and return error response
+            // success flag remains false
             Msg.error(this, "Error applying structure to memory", e);
             return createErrorResponse("Error applying structure: " + e.getMessage());
+        } finally {
+            // Ensure transaction is always ended properly
+            if (transactionID != -1) {
+                program.endTransaction(transactionID, success); // Commits only if success is true
+            }
         }
+        // No return needed here, all paths return from try or catch
     }
 
     /**
@@ -635,13 +692,24 @@ public class DataTypeService implements Service {
                 return createErrorResponse("Cannot delete built-in data type: " + dataTypeName);
             }
 
-            // Delete the data type
-            boolean deleted = program.getDataTypeManager().remove(dataType, TaskMonitor.DUMMY);
-
-            if (!deleted) {
-                // Return error response if deletion failed
-                return createErrorResponse("Failed to delete data type: " + dataTypeName + ". It may be in use or protected.");
+            // Start transaction before deleting
+            int txId = program.startTransaction("Delete Data Type: " + dataTypeName);
+            boolean success = false;
+            try {
+                // Delete the data type
+                boolean deleted = program.getDataTypeManager().remove(dataType, TaskMonitor.DUMMY);
+                if (!deleted) {
+                    // If remove returns false, it's an error condition
+                    throw new Exception("DataTypeManager.remove returned false. Type may be in use or protected.");
+                }
+                success = true; // Mark success if no exception
+            } finally {
+                // End transaction, commit only if success is true
+                program.endTransaction(txId, success);
             }
+
+            // If we reach here and success is true, the deletion was committed.
+            // If success is false, an exception was caught and handled below, or remove returned false.
 
             // Create data for the success response
             Map<String, Object> responseData = new HashMap<>();
@@ -820,23 +888,26 @@ public class DataTypeService implements Service {
             return createErrorResponse("No program loaded");
         }
 
-        // Start a transaction
-        int transactionID = program.startTransaction("Create Enum Data Type");
+        int transactionID = -1; // Initialize transaction ID
+        boolean success = false; // Flag for commit/rollback
+        EnumDataType addedEnum = null; // Declare here for scope
 
         try {
-            // Validate valueSize
+            // Perform checks *before* starting transaction
             if (valueSize != 1 && valueSize != 2 && valueSize != 4 && valueSize != 8) {
-                program.endTransaction(transactionID, false); // Rollback
+                // No transaction started yet
                 return createErrorResponse("Invalid enum value size. Must be 1, 2, 4, or 8 bytes.");
             }
 
-            // Check if the enum already exists
-            DataTypeManager dataTypeManager = program.getDataTypeManager();
+            DataTypeManager dataTypeManager = program.getDataTypeManager(); // Keep this
             DataType existingType = findDataType(enumName);
             if (existingType != null) {
-                program.endTransaction(transactionID, false); // Rollback
+                 // No transaction started yet
                 return createErrorResponse("Enum already exists: " + enumName);
             }
+
+            // Start transaction *before* adding the data type
+            transactionID = program.startTransaction("Create Enum Data Type: " + enumName);
 
             // Create the enum
             EnumDataType enumDataType = new EnumDataType(CategoryPath.ROOT, enumName, valueSize, dataTypeManager);
@@ -852,10 +923,13 @@ public class DataTypeService implements Service {
                 }
             }
 
-            // Add the enum to the data type manager
-            EnumDataType addedEnum = (EnumDataType) dataTypeManager.addDataType(
+            // Add the enum to the data type manager within the transaction
+            addedEnum = (EnumDataType) dataTypeManager.addDataType(
                     enumDataType,
                     DataTypeConflictHandler.DEFAULT_HANDLER);
+            if (addedEnum == null) {
+                 throw new Exception("dataTypeManager.addDataType returned null for Enum");
+            }
 
             // Create data for the success response
             Map<String, Object> responseData = new HashMap<>();
@@ -876,16 +950,21 @@ public class DataTypeService implements Service {
             }
             responseData.put("values", enumValues);
 
-            // End transaction with commit
-            program.endTransaction(transactionID, true);
+            // Mark success for commit
+            success = true;
 
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
-            // End transaction with rollback in case of error
-            program.endTransaction(transactionID, false);
+            // Rollback handled in finally block
             Msg.error(this, "Error creating enum data type", e);
-            return createErrorResponse("Error creating enum: " + e.getMessage());
+            return createErrorResponse("Error creating enum: " + e.getMessage()); // Moved inside catch
+        } finally {
+             // Ensure transaction is always ended
+             if (transactionID != -1) {
+                 program.endTransaction(transactionID, success);
+             }
+            // Removed return from here
         }
     }
 
@@ -904,27 +983,40 @@ public class DataTypeService implements Service {
             return createErrorResponse("No program loaded");
         }
 
+        int transactionID = -1; // Initialize transaction ID
+        boolean success = false; // Flag for commit/rollback
+        Data data = null; // Declare data here for scope
+
         try {
+            // Perform checks *before* starting transaction
             Address address = program.getAddressFactory().getAddress(addressStr);
             if (address == null) {
+                // No transaction started yet
                 return createErrorResponse("Invalid address: " + addressStr);
             }
 
-            // Find the enum
             DataType enumType = findDataType(enumName);
             if (enumType == null) {
+                 // No transaction started yet
                 return createErrorResponse("Enum not found: " + enumName);
             }
 
             if (!(enumType instanceof Enum enumDt)) {
+                 // No transaction started yet
                 return createErrorResponse("Data type is not an enum: " + enumName);
             }
 
-            // Apply the enum to memory
-            Data data = program.getListing().createData(address, enumType);
+            // Now start transaction before applying enum
+            transactionID = program.startTransaction("Apply Enum To Memory: " + enumName);
+
+            // Apply the enum to memory inside the transaction
+            data = program.getListing().createData(address, enumType);
             if (data == null) {
-                return createErrorResponse("Failed to apply enum at address " + addressStr);
+                 // Let finally block handle rollback
+                throw new Exception("program.getListing().createData returned null");
             }
+            // Mark success if createData succeeded
+            success = true;
 
             // Get the current value
             long value = data.getScalar(0).getUnsignedValue();
@@ -951,8 +1043,14 @@ public class DataTypeService implements Service {
             // Return standardized success response
             return createSuccessResponse(responseData);
         } catch (Exception e) {
+            // Success flag remains false for rollback
             Msg.error(this, "Error applying enum to memory", e);
             return createErrorResponse("Error applying enum: " + e.getMessage());
+        } finally {
+            // Ensure transaction is always ended
+            if (transactionID != -1) {
+                program.endTransaction(transactionID, success); // Commits only if success is true
+            }
         }
     }
 

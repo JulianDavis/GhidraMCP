@@ -1259,7 +1259,8 @@ def get_complete_function_stats() -> Dict[str, Any]:
 
 @mcp.tool()
 def set_function_prototype(function_name: str, return_type: str, parameters: List[Dict[str, str]],
-                          calling_convention: str = None, force_update: bool = False) -> Dict[str, Any]:
+                           calling_convention: str = None, force_update: bool = False,
+                           update_type: str = "DYNAMIC_STORAGE_ALL_PARAMS") -> Dict[str, Any]:
     """
     Set a function prototype (signature) for a function.
 
@@ -1269,6 +1270,11 @@ def set_function_prototype(function_name: str, return_type: str, parameters: Lis
         parameters: List of parameter definitions (name and type pairs)
         calling_convention: Optional calling convention (can be null to keep existing)
         force_update: Whether to force update even if parameters might be incompatible
+        update_type: How parameter storage should be handled. Defaults to DYNAMIC_STORAGE_ALL_PARAMS.
+                     Possible values:
+                     - DYNAMIC_STORAGE_ALL_PARAMS: Auto-assign storage based on convention. May fail for complex cases.
+                     - DYNAMIC_STORAGE_FORMAL_PARAMS: Auto-assign for formal params only.
+                     - CUSTOM_STORAGE: Parameters must include explicit storage info (not fully supported by this tool yet).
 
     Returns:
         Dictionary containing the result of the operation
@@ -1295,7 +1301,8 @@ def set_function_prototype(function_name: str, return_type: str, parameters: Lis
         "functionName": function_name,
         "returnType": return_type,
         "parameters": params_json,  # JSON string of parameters
-        "forceUpdate": str(force_update).lower()  # String "true" or "false"
+        "forceUpdate": str(force_update).lower(), # String "true" or "false"
+        "updateType": update_type # Add the new parameter
     }
 
     # Add calling convention if specified
