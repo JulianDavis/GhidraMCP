@@ -1258,7 +1258,7 @@ def get_complete_function_stats() -> Dict[str, Any]:
     return all_stats
 
 @mcp.tool()
-def set_function_prototype(function_name: str, return_type: str, parameters: List[Dict[str, str]],
+def set_function_prototype(function_name: str, return_type: str, parameters: List[Dict[str, str]], # Add optional 'storage': str to dict
                            calling_convention: str = None, force_update: bool = False,
                            update_type: str = "DYNAMIC_STORAGE_ALL_PARAMS") -> Dict[str, Any]:
     """
@@ -1267,14 +1267,14 @@ def set_function_prototype(function_name: str, return_type: str, parameters: Lis
     Args:
         function_name: The name of the function to modify
         return_type: The return type name
-        parameters: List of parameter definitions (name and type pairs)
+        parameters: List of parameter definitions (name, type, and optional storage string pairs)
         calling_convention: Optional calling convention (can be null to keep existing)
         force_update: Whether to force update even if parameters might be incompatible
         update_type: How parameter storage should be handled. Defaults to DYNAMIC_STORAGE_ALL_PARAMS.
                      Possible values:
                      - DYNAMIC_STORAGE_ALL_PARAMS: Auto-assign storage based on convention. May fail for complex cases.
                      - DYNAMIC_STORAGE_FORMAL_PARAMS: Auto-assign for formal params only.
-                     - CUSTOM_STORAGE: Parameters must include explicit storage info (not fully supported by this tool yet).
+                     - CUSTOM_STORAGE: Parameters must include explicit storage info via the 'storage' key (e.g., "EAX", "Stack[0x8]").
 
     Returns:
         Dictionary containing the result of the operation
@@ -1994,6 +1994,32 @@ def get_references(address: str) -> Union[ReferenceResult, ErrorResult]:
 
     # Use the helper to handle the standardized response format
     return extract_response_data(response, ReferenceResult)
+
+
+@mcp.tool()
+def memory_clear(start_address: str, end_address: str) -> Dict[str, Any]:
+    """
+    Clear the listing (code/data) in the specified memory range.
+
+    Args:
+        start_address: The starting address string (e.g., "0x1400").
+        end_address: The ending address string (inclusive, e.g., "0x14ff").
+
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - success: Boolean indicating success
+        - startAddress: The starting address cleared
+        - endAddress: The ending address cleared
+        - message: Status message
+        Or an error dictionary on failure.
+    """
+    response = safe_post("memory/clear", {
+        "start_address": start_address,
+        "end_address": end_address
+    })
+
+    # safe_post already handles standardized responses and errors
+    return response
 
 @mcp.tool()
 def disassemble_at_address(address: str, length: int = 10) -> Union[DisassemblyResult, ErrorResult]:

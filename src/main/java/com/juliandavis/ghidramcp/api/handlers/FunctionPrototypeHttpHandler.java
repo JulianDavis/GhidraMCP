@@ -105,6 +105,8 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
                     Map<String, String> paramDef = new HashMap<>();
                     paramDef.put("name", (String) paramMap.get("name"));
                     paramDef.put("type", (String) paramMap.get("type"));
+                    // Extract optional storage string
+                    paramDef.put("storage", (String) paramMap.get("storage")); // Will be null if not present
 
                     parameterDefinitions.add(paramDef);
                 }

@@ -14,7 +14,8 @@ import ghidra.util.Msg;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.program.model.listing.ParameterImpl;
-
+import ghidra.program.model.listing.VariableStorage; // Import VariableStorage
+import ghidra.program.model.lang.ProgramArchitecture; // Import ProgramArchitecture
 import java.util.*;
 
 /**
@@ -160,29 +161,60 @@ public class FunctionPrototypeService implements Service {
                 // For this, we need a list of Variables (Parameters are Variables)
                 // We can use our newParams list directly
 
-                // Create actual parameter objects
-                // First, we'll clear the existing parameters to make sure we're starting fresh
-                List<Parameter> parameters = new ArrayList<>();
-                for (Map<String, String> paramDef : parameterDefinitions) {
-                    String paramName = paramDef.get("name");
-                    String paramType = paramDef.get("type");
-
-                    DataType paramDataType = resolveDataType(paramType);
-                    // Use the function's createParameter method to get proper parameter objects
-                    Parameter param = new ParameterImpl(paramName, paramDataType, program);
-                    parameters.add(param);
-                }
-
-
-                // Call the actual method with the correct signature
-                // Convert updateTypeStr to FunctionUpdateType enum
+                // Convert updateTypeStr to FunctionUpdateType enum *before* creating parameters
                 FunctionUpdateType updateType;
                 try {
                     updateType = FunctionUpdateType.valueOf(updateTypeStr.toUpperCase());
                 } catch (IllegalArgumentException e) {
                     Msg.warn(this, "Invalid FunctionUpdateType string: " + updateTypeStr + ". Defaulting to DYNAMIC_STORAGE_ALL_PARAMS.");
                     updateType = FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS; // Default on error
+                } catch (NullPointerException e) {
+                     Msg.warn(this, "Null FunctionUpdateType string provided. Defaulting to DYNAMIC_STORAGE_ALL_PARAMS.");
+                     updateType = FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS; // Default on null
                 }
+
+                // Create actual parameter objects based on updateType
+                List<Parameter> parameters = new ArrayList<>();
+                // Get ProgramArchitecture via DataTypeManager
+                ProgramArchitecture programArch = program.getDataTypeManager().getProgramArchitecture();
+
+                for (Map<String, String> paramDef : parameterDefinitions) {
+                    String paramName = paramDef.get("name");
+                    String paramType = paramDef.get("type");
+                    String storageString = paramDef.get("storage"); // Get storage string from handler
+
+                    DataType paramDataType = resolveDataType(paramType);
+                    if (paramDataType == null) {
+                         // Throw exception to be caught by the outer catch block
+                         throw new InvalidInputException("Could not resolve parameter type: " + paramType);
+                    }
+
+                    Parameter param;
+                    if (updateType == FunctionUpdateType.CUSTOM_STORAGE) {
+                        if (storageString == null || storageString.trim().isEmpty()) {
+                            throw new InvalidInputException("CUSTOM_STORAGE requires a non-empty 'storage' string for parameter: " + paramName);
+                        }
+                        try {
+                            // Deserialize the storage string
+                            VariableStorage storage = VariableStorage.deserialize(programArch, storageString);
+                            if (storage == null || !storage.isValid()) {
+                                throw new InvalidInputException("Invalid or unparsable storage string '" + storageString + "' for parameter: " + paramName);
+                            }
+                            // Create parameter with custom storage
+                            param = new ParameterImpl(paramName, paramDataType, storage, program);
+                        } catch (Exception e) { // Catch potential errors during deserialize
+                             throw new InvalidInputException("Error parsing storage string '" + storageString + "' for parameter " + paramName + ": " + e.getMessage());
+                        }
+                    } else {
+                        // Create parameter without explicit storage for dynamic types
+                        param = new ParameterImpl(paramName, paramDataType, program);
+                    }
+                    parameters.add(param);
+                }
+
+
+                // Call the actual method with the correct signature
+                // updateType enum is already resolved above
 
                 // Call the actual method with the correct signature, using the resolved updateType
                 function.replaceParameters(parameters, updateType, forceUpdate, SourceType.USER_DEFINED);
