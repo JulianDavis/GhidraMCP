@@ -1,6 +1,7 @@
 package com.juliandavis.ghidramcp.api.handlers;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
@@ -172,10 +173,22 @@ public class DecompileHttpHandler extends BaseHttpHandler {
             return;
         }
         
-        // Parse parameters from the request
-        Map<String, String> params = parsePostParams(exchange);
-        String oldName = params.get("oldName");
-        String newName = params.get("newName");
+        // Check Content-Type to determine how to parse the request
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        Map<String, Object> params;
+        
+        if (contentType != null && contentType.contains("application/json")) {
+            // Parse JSON
+            params = parseJsonRequest(exchange);
+        } else {
+            // Fall back to form-encoded for backward compatibility
+            Map<String, String> formParams = parsePostParams(exchange);
+            params = new HashMap<>(formParams);
+        }
+        
+        // Get parameters, handling type casting for JSON
+        String oldName = (String) params.get("oldName");
+        String newName = (String) params.get("newName");
         
         // Validate parameters
         if (oldName == null || oldName.isEmpty()) {
@@ -201,10 +214,22 @@ public class DecompileHttpHandler extends BaseHttpHandler {
             return;
         }
         
-        // Parse parameters from the request
-        Map<String, String> params = parsePostParams(exchange);
-        String address = params.get("address");
-        String newName = params.get("newName");
+        // Check Content-Type to determine how to parse the request
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        Map<String, Object> params;
+        
+        if (contentType != null && contentType.contains("application/json")) {
+            // Parse JSON
+            params = parseJsonRequest(exchange);
+        } else {
+            // Fall back to form-encoded for backward compatibility
+            Map<String, String> formParams = parsePostParams(exchange);
+            params = new HashMap<>(formParams);
+        }
+        
+        // Get parameters, handling type casting for JSON
+        String address = (String) params.get("address");
+        String newName = (String) params.get("newName");
         
         // Validate parameters
         if (address == null || address.isEmpty()) {

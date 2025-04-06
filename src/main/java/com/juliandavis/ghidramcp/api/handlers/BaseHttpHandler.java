@@ -59,7 +59,31 @@ public abstract class BaseHttpHandler {
     protected <T extends Service> T getService(String serviceName, Class<T> serviceClass) {
         return ServiceRegistry.getInstance().getService(serviceName, serviceClass);
     }
-    
+
+    /**
+     * Parse JSON from the request body.
+     *
+     * @param exchange the HTTP exchange
+     * @return the parsed JSON as a Map
+     * @throws IOException if an I/O error occurs
+     */
+    protected Map<String, Object> parseJsonRequest(HttpExchange exchange) throws IOException {
+        String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+        if (requestBody.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        try {
+            // Use your existing Gson instance to parse the JSON
+            return plugin.getGson().fromJson(requestBody,
+                    new com.google.gson.reflect.TypeToken<Map<String, Object>>(){}.getType());
+        } catch (Exception e) {
+            Msg.warn(this, "Failed to parse JSON request: " + e.getMessage());
+            return new HashMap<>();
+        }
+    }
+
     /**
      * Send a JSON response to the client.
      * 
@@ -211,9 +235,24 @@ public abstract class BaseHttpHandler {
             for (String param : query.split("&")) {
                 String[] pair = param.split("=");
                 if (pair.length > 1) {
-                    queryParams.put(pair[0], pair[1]);
+                    // URL decode the parameter value
+                    try {
+                        String key = java.net.URLDecoder.decode(pair[0], StandardCharsets.UTF_8);
+                        String value = java.net.URLDecoder.decode(pair[1], StandardCharsets.UTF_8);
+                        queryParams.put(key, value);
+                    } catch (IllegalArgumentException e) {
+                        // Log malformed URL encoding but continue
+                        Msg.warn(this, "Malformed URL encoding in query parameter: " + param);
+                        queryParams.put(pair[0], pair[1]);
+                    }
                 } else {
-                    queryParams.put(pair[0], "");
+                    try {
+                        queryParams.put(java.net.URLDecoder.decode(pair[0], StandardCharsets.UTF_8), "");
+                    } catch (IllegalArgumentException e) {
+                        // Log malformed URL encoding but continue
+                        Msg.warn(this, "Malformed URL encoding in query parameter: " + param);
+                        queryParams.put(pair[0], "");
+                    }
                 }
             }
         }
@@ -236,9 +275,24 @@ public abstract class BaseHttpHandler {
             for (String param : requestBody.split("&")) {
                 String[] pair = param.split("=");
                 if (pair.length > 1) {
-                    postParams.put(pair[0], pair[1]);
+                    // URL decode the parameter value
+                    try {
+                        String key = java.net.URLDecoder.decode(pair[0], StandardCharsets.UTF_8);
+                        String value = java.net.URLDecoder.decode(pair[1], StandardCharsets.UTF_8);
+                        postParams.put(key, value);
+                    } catch (IllegalArgumentException e) {
+                        // Log malformed URL encoding but continue
+                        Msg.warn(this, "Malformed URL encoding in POST parameter: " + param);
+                        postParams.put(pair[0], pair[1]);
+                    }
                 } else {
-                    postParams.put(pair[0], "");
+                    try {
+                        postParams.put(java.net.URLDecoder.decode(pair[0], StandardCharsets.UTF_8), "");
+                    } catch (IllegalArgumentException e) {
+                        // Log malformed URL encoding but continue
+                        Msg.warn(this, "Malformed URL encoding in POST parameter: " + param);
+                        postParams.put(pair[0], "");
+                    }
                 }
             }
         }

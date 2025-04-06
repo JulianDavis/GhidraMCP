@@ -2,6 +2,7 @@ package com.juliandavis.ghidramcp.api.handlers;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
@@ -106,7 +107,7 @@ public class DisassembleHttpHandler extends BaseHttpHandler {
         String name = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         
         // Validate parameters
-        if (name == null || name.isEmpty()) {
+        if (name.isEmpty()) {
             sendErrorResponse(exchange, "Function name is required");
             return;
         }
@@ -114,7 +115,7 @@ public class DisassembleHttpHandler extends BaseHttpHandler {
         Map<String, Object> result = disassembleService.getDisassemblyForFunction(name);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle set comment request.
      */
@@ -123,35 +124,62 @@ public class DisassembleHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
-        // Parse parameters from the request
-        Map<String, String> params = parsePostParams(exchange);
-        String address = params.get("address");
-        String comment = params.get("comment");
-        int commentType = parseIntOrDefault(params.get("type"), CodeUnit.EOL_COMMENT); // Default to end-of-line comment
-        
+
+        // Check Content-Type to determine how to parse the request
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        Map<String, Object> params;
+
+        if (contentType != null && contentType.contains("application/json")) {
+            // Parse JSON
+            params = parseJsonRequest(exchange);
+        } else {
+            // Fall back to form-encoded for backward compatibility
+            Map<String, String> formParams = parsePostParams(exchange);
+            params = new HashMap<>(formParams);
+        }
+
+        // Get parameters, handling type casting for JSON
+        String address = (String) params.get("address");
+        String comment = (String) params.get("comment");
+
+        // Handle type parameter which could be Integer or String depending on input format
+        int commentType = CodeUnit.EOL_COMMENT; // Default
+        if (params.containsKey("type")) {
+            Object typeParam = params.get("type");
+            if (typeParam instanceof Number) {
+                commentType = ((Number) typeParam).intValue();
+            } else if (typeParam instanceof String) {
+                try {
+                    commentType = Integer.parseInt((String) typeParam);
+                } catch (NumberFormatException e) {
+                    // Use default value
+                    Msg.warn(this, "Invalid comment type: " + typeParam);
+                }
+            }
+        }
+
         // Validate parameters
         if (address == null || address.isEmpty()) {
             sendErrorResponse(exchange, "Address is required");
             return;
         }
-        
+
         // Comment can be empty (to clear a comment)
         if (comment == null) {
             comment = "";
         }
-        
+
         // Validate comment type
         if (commentType != CodeUnit.PLATE_COMMENT &&
                 commentType != CodeUnit.PRE_COMMENT &&
                 commentType != CodeUnit.EOL_COMMENT &&
                 commentType != CodeUnit.POST_COMMENT &&
                 commentType != CodeUnit.REPEATABLE_COMMENT) {
-            
+
             sendErrorResponse(exchange, "Invalid comment type: " + commentType);
             return;
         }
-        
+
         Map<String, Object> result = disassembleService.setCommentAtAddress(address, comment, commentType);
         sendJsonResponse(exchange, result);
     }
