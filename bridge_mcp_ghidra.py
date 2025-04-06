@@ -1268,177 +1268,326 @@ def get_complete_symbol_stats(symbol_type: str = None) -> Dict[str, Any]:
 def create_structure_data_type(name: str, description: str = None, packed: bool = False, alignment: int = 0) -> Dict[str, Any]:
     """
     Create a new structure data type in the program's data type manager.
-    
+
     Args:
         name: Name of the structure to create
         description: Optional description of the structure
         packed: Whether the structure should be packed (no alignment)
         alignment: Alignment value (e.g., 1, 2, 4, 8)
-        
+
     Returns:
         Dictionary containing the result of the operation
     """
-    # Prepare parameters
     params = {
         "name": name,
         "packed": str(packed).lower()
     }
-    
+
     if description:
         params["description"] = description
-    
+
     if alignment > 0:
         params["alignment"] = str(alignment)
-    
+
     response = safe_post("dataTypes/createStructure", params)
-    
+
     if isinstance(response, dict):
-        # Check for standardized response format
         if "status" in response and response.get("status") == "success" and "data" in response:
             return response.get("data", {})
         return response
     else:
-        # Convert string response to dict for consistency
         return ErrorResult.from_dict(response)
 
 @mcp.tool()
-def add_field_to_structure(structure_name: str, field_name: str, field_type: str, 
-                          comment: str = None, offset: int = -1) -> Dict[str, Any]:
+def search_data_types(query=None, category=None, offset=0, limit=100):
+    """
+    Search for data types matching a pattern.
+
+    Args:
+        query: Search pattern (optional)
+        category: Category path to filter by (optional)
+        offset: Starting position for pagination (default: 0)
+        limit: Maximum number of results to return (default: 100)
+
+    Returns:
+        Dictionary containing the search results
+    """
+    params = {
+        "offset": str(offset),
+        "limit": str(limit)
+    }
+
+    if query:
+        params["query"] = query
+
+    if category:
+        params["category"] = category
+
+    response = safe_get("dataTypes/search", params)
+
+    if isinstance(response, dict):
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def get_data_type_category(path=None):
+    """
+    Get data types in a category.
+
+    Args:
+        path: Category path (optional, root category if not specified)
+
+    Returns:
+        Dictionary containing category information and contained data types
+    """
+    params = {}
+
+    if path:
+        params["path"] = path
+
+    response = safe_get("dataTypes/category", params)
+
+    if isinstance(response, dict):
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def create_primitive_data_type(data_type, address):
+    """
+    Create a primitive data type at the specified address.
+
+    Args:
+        data_type: Name of the data type (e.g., "byte", "word", "dword", "float")
+        address: Address where to create the data type
+
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    params = {
+        "dataType": data_type,
+        "address": address
+    }
+
+    response = safe_post("dataTypes/createPrimitive", params)
+
+    if isinstance(response, dict):
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def create_string_data_type(string_type, address, length=-1):
+    """
+    Create a string data type at the specified address.
+
+    Args:
+        string_type: Type of string ("string", "unicode", "pascal")
+        address: Address where to create the string data type
+        length: Optional maximum length for the string (-1 for auto-detect)
+
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    params = {
+        "stringType": string_type,
+        "address": address
+    }
+
+    if length >= 0:
+        params["length"] = str(length)
+
+    response = safe_post("dataTypes/createString", params)
+
+    if isinstance(response, dict):
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def create_array_data_type(element_type, address, num_elements):
+    """
+    Create an array data type at the specified address.
+
+    Args:
+        element_type: Name of the element data type
+        address: Address where to create the array
+        num_elements: Number of elements in the array
+
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    params = {
+        "elementType": element_type,
+        "address": address,
+        "numElements": str(num_elements)
+    }
+
+    response = safe_post("dataTypes/createArray", params)
+
+    if isinstance(response, dict):
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def add_field_to_structure(structure_name, field_name, field_type, comment=None, offset=None):
     """
     Add a field to an existing structure data type.
-    
+
     Args:
         structure_name: Name of the structure to add the field to
         field_name: Name of the field to add
         field_type: Data type name for the field
         comment: Optional comment for the field
-        offset: Byte offset where the field should be inserted (-1 to append to the end)
-        
+        offset: Byte offset where the field should be inserted (None to append to end)
+
     Returns:
         Dictionary containing the result of the operation
     """
-    # Prepare parameters
     params = {
         "structureName": structure_name,
         "fieldName": field_name,
         "fieldType": field_type
     }
-    
+
     if comment:
         params["comment"] = comment
-    
-    if offset >= 0:
+
+    if offset is not None:
         params["offset"] = str(offset)
-    
+
     response = safe_post("dataTypes/addFieldToStructure", params)
-    
+
     if isinstance(response, dict):
-        # Check for standardized response format
         if "status" in response and response.get("status") == "success" and "data" in response:
             return response.get("data", {})
         return response
     else:
-        # Convert string response to dict for consistency
         return ErrorResult.from_dict(response)
-        
+
 @mcp.tool()
-def apply_structure_to_memory(structure_name: str, address: str) -> Dict[str, Any]:
+def apply_structure_to_memory(structure_name, address):
     """
     Apply a structure data type to memory at a specified address.
-    
+
     Args:
         structure_name: Name of the structure to apply
-        address: Address where to apply the structure (e.g., "0x1400")
-        
+        address: Address where to apply the structure
+
     Returns:
         Dictionary containing the result of the operation
     """
-    # Prepare parameters
     params = {
         "structureName": structure_name,
         "address": address
     }
-    
+
     response = safe_post("dataTypes/applyStructure", params)
-    
+
     if isinstance(response, dict):
-        # Check for standardized response format
         if "status" in response and response.get("status") == "success" and "data" in response:
             return response.get("data", {})
         return response
     else:
-        # Convert string response to dict for consistency
         return ErrorResult.from_dict(response)
-        
+
 @mcp.tool()
-def create_enum_data_type(name: str, value_size: int = 4, values: Dict[str, int] = None, 
-                         description: str = None) -> Dict[str, Any]:
+def create_enum_data_type(name: str, value_size: int = 4, values: Dict[str, int] = None, description: str = None) -> Dict[str, Any]:
     """
     Create a new enumeration data type in the program's data type manager.
-    
+
     Args:
         name: Name of the enum to create
         value_size: Size of the enum values in bytes (1, 2, 4, or 8)
         values: Dictionary of name to value pairs for enum entries
         description: Optional description of the enum
-        
+
     Returns:
         Dictionary containing the result of the operation
     """
-    # Prepare parameters
     params = {
         "name": name,
         "valueSize": str(value_size)
     }
-    
+
     if description:
         params["description"] = description
-    
-    # Convert values dictionary to comma-separated name:value pairs
+
     if values:
+        # Convert values dict to comma-separated name:value pairs
         values_str = ",".join([f"{k}:{v}" for k, v in values.items()])
         params["values"] = values_str
-    
+
     response = safe_post("dataTypes/createEnum", params)
-    
+
     if isinstance(response, dict):
-        # Check for standardized response format
         if "status" in response and response.get("status") == "success" and "data" in response:
             return response.get("data", {})
         return response
     else:
-        # Convert string response to dict for consistency
         return ErrorResult.from_dict(response)
-        
+
 @mcp.tool()
-def apply_enum_to_memory(enum_name: str, address: str) -> Dict[str, Any]:
+def apply_enum_to_memory(enum_name, address):
     """
     Apply an enum data type to memory at a specified address.
-    
+
     Args:
         enum_name: Name of the enum to apply
-        address: Address where to apply the enum (e.g., "0x1400")
-        
+        address: Address where to apply the enum
+
     Returns:
         Dictionary containing the result of the operation
     """
-    # Prepare parameters
     params = {
         "enumName": enum_name,
         "address": address
     }
-    
+
     response = safe_post("dataTypes/applyEnum", params)
-    
+
     if isinstance(response, dict):
-        # Check for standardized response format
         if "status" in response and response.get("status") == "success" and "data" in response:
             return response.get("data", {})
         return response
     else:
-        # Convert string response to dict for consistency
         return ErrorResult.from_dict(response)
 
+@mcp.tool()
+def delete_data_type(name):
+    """
+    Delete a data type from the program's data type manager.
+
+    Args:
+        name: Name of the data type to delete
+
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    params = {
+        "name": name
+    }
+
+    response = safe_post("dataTypes/delete", params)
+
+    if isinstance(response, dict):
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        return ErrorResult.from_dict(response)
 
 @mcp.tool()
 def get_program_info(detail_level: str = "basic") -> Dict[str, Any]:
@@ -1757,6 +1906,41 @@ def disassemble_function(name: str) -> Union[FunctionDisassemblyResult, ErrorRes
     # Use the helper to handle the standardized response format
     return extract_response_data(response, FunctionDisassemblyResult)
         
+@mcp.tool()
+def convert_number(text: str, size: int = None) -> Dict[str, Any]:
+    """
+    Convert a number (decimal, hexadecimal) to different representations.
+    
+    This function prevents hallucinations related to numerical representations
+    by providing accurate conversions to various formats.
+    
+    Args:
+        text: Textual representation of the number to convert
+        size: Size of the variable in bytes (optional, will be estimated if not provided)
+        
+    Returns:
+        Dictionary containing the converted number representations, including:
+        - decimal: Decimal string representation
+        - hexadecimal: Hexadecimal string representation
+        - bytes: Bytes as space-separated hex values
+        - ascii: ASCII representation (if applicable, otherwise null)
+        - binary: Binary string representation
+    """
+    params = {"text": text}
+    if size is not None:
+        params["size"] = str(size)
+        
+    response = safe_get("number/convert", params)
+    
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        # Convert string response to dict for consistency
+        return ErrorResult.from_dict(response)
+
 @mcp.tool()
 def set_comment(address: str, comment: str, comment_type: int = 3) -> Dict[str, Any]:
     """

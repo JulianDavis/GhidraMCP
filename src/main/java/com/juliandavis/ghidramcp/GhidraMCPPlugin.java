@@ -1,6 +1,7 @@
 package com.juliandavis.ghidramcp;
 
 import com.juliandavis.ghidramcp.services.initializers.*;
+import com.juliandavis.ghidramcp.services.initializers.NumberConversionServiceInitializer;
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.plugin.ProgramPlugin;
 import ghidra.framework.plugintool.PluginInfo;
@@ -112,6 +113,10 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         // Function Xref services
         FunctionXrefServiceInitializer functionXrefInitializer = new FunctionXrefServiceInitializer(this, serviceRegistry, endpointRegistry);
         functionXrefInitializer.initialize();
+        
+        // Number Conversion services
+        NumberConversionServiceInitializer numberConversionInitializer = new NumberConversionServiceInitializer(this, serviceRegistry, endpointRegistry);
+        numberConversionInitializer.initialize();
     }
     
     private void startServer() {
