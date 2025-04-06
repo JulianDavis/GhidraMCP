@@ -62,62 +62,64 @@ public class FunctionPrototypeService implements Service {
      * @param parameterDefinitions List of parameter definitions (name and type pairs)
      * @param callingConvention Optional calling convention (can be null to keep existing)
      * @param forceUpdate Whether to force update even if parameters might be incompatible
+     * @param updateTypeStr String representation of FunctionUpdateType (e.g., "DYNAMIC_STORAGE_ALL_PARAMS")
      * @return Map containing the result of the operation
      */
     public Map<String, Object> setFunctionPrototype(
             String functionName,
-            String returnType, 
+            String returnType,
             List<Map<String, String>> parameterDefinitions,
             String callingConvention,
-            boolean forceUpdate) {
-        
+            boolean forceUpdate,
+            String updateTypeStr) { // Add new parameter
+
         if (program == null) {
             return createErrorResponse("No program loaded");
         }
-        
+
         if (functionName == null || functionName.isEmpty()) {
             return createErrorResponse("Function name is required");
         }
-        
+
         if (returnType == null || returnType.isEmpty()) {
             return createErrorResponse("Return type is required");
         }
-        
+
         try {
             // Find the function by name
             Function function = findFunction(functionName);
             if (function == null) {
                 return createErrorResponse("Function not found: " + functionName);
             }
-            
+
             // Resolve the return data type
             DataType returnDataType = resolveDataType(returnType);
             if (returnDataType == null) {
                 return createErrorResponse("Could not resolve return type: " + returnType);
             }
-            
+
             // Create the parameter definitions using the example approach
             List<Parameter> newParams = new ArrayList<>();
-            
+
             // Build the new parameter list
             for (int i = 0; i < parameterDefinitions.size(); i++) {
                 Map<String, String> paramDef = parameterDefinitions.get(i);
                 String paramName = paramDef.get("name");
                 String paramType = paramDef.get("type");
-                
+
                 if (paramName == null || paramName.isEmpty()) {
                     return createErrorResponse("Parameter name is required");
                 }
-                
+
                 if (paramType == null || paramType.isEmpty()) {
                     return createErrorResponse("Parameter type is required");
                 }
-                
+
                 DataType paramDataType = resolveDataType(paramType);
                 if (paramDataType == null) {
                     return createErrorResponse("Could not resolve parameter type: " + paramType);
                 }
-                
+
                 // Get or create parameters using the function's createParameter method
                 try {
                     // Create or get parameter for the ordinal
@@ -130,34 +132,34 @@ public class FunctionPrototypeService implements Service {
                         // Create a placeholder - actual parameter will be created in transaction
                         param = null;
                     }
-                    
+
                     // Add to our list (could be null for new parameters)
                     newParams.add(param);
                 } catch (Exception e) {
                     return createErrorResponse("Error creating parameter: " + e.getMessage());
                 }
             }
-            
+
             // Begin transaction
             int txId = program.startTransaction("Set Function Prototype: " + functionName);
             boolean success = false;
             String message;
-            
+
             try {
                 // Set the return type
                 function.setReturnType(returnDataType, SourceType.USER_DEFINED);
-                
+
                 // Set calling convention if specified
                 if (callingConvention != null && !callingConvention.isEmpty()) {
                     function.setCallingConvention(callingConvention);
                 }
-                
+
                 // Following the method signature from the documentation:
                 // void replaceParameters(List<? extends Variable> params, Function.FunctionUpdateType updateType, boolean force, SourceType source)
-                
+
                 // For this, we need a list of Variables (Parameters are Variables)
                 // We can use our newParams list directly
-                
+
                 // Create actual parameter objects
                 // First, we'll clear the existing parameters to make sure we're starting fresh
                 List<Parameter> parameters = new ArrayList<>();
@@ -170,11 +172,21 @@ public class FunctionPrototypeService implements Service {
                     Parameter param = new ParameterImpl(paramName, paramDataType, program);
                     parameters.add(param);
                 }
-                
+
 
                 // Call the actual method with the correct signature
-                function.replaceParameters(parameters, FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, forceUpdate, SourceType.USER_DEFINED);
-                
+                // Convert updateTypeStr to FunctionUpdateType enum
+                FunctionUpdateType updateType;
+                try {
+                    updateType = FunctionUpdateType.valueOf(updateTypeStr.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    Msg.warn(this, "Invalid FunctionUpdateType string: " + updateTypeStr + ". Defaulting to DYNAMIC_STORAGE_ALL_PARAMS.");
+                    updateType = FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS; // Default on error
+                }
+
+                // Call the actual method with the correct signature, using the resolved updateType
+                function.replaceParameters(parameters, updateType, forceUpdate, SourceType.USER_DEFINED);
+
                 success = true;
                 message = "Function prototype updated successfully";
             } catch (DuplicateNameException e) {
@@ -189,26 +201,26 @@ public class FunctionPrototypeService implements Service {
             } finally {
                 program.endTransaction(txId, success);
             }
-            
+
             // Prepare the response
             Map<String, Object> result = new HashMap<>();
             result.put("success", success);
             result.put("message", message);
             result.put("functionName", functionName);
-            
+
             if (success) {
                 // Include the updated function details
                 result.put("function", getFunctionDetails(function));
             }
-            
+
             return createSuccessResponse(result);
-            
+
         } catch (Exception e) {
             Msg.error(this, "Error setting function prototype", e);
             return createErrorResponse("Error: " + e.getMessage());
         }
     }
-    
+
     /**
      * Find a function by name
      *
@@ -219,17 +231,17 @@ public class FunctionPrototypeService implements Service {
         if (program == null || name == null || name.isEmpty()) {
             return null;
         }
-        
+
         // Try to find the function by name
         for (Function func : program.getFunctionManager().getFunctions(true)) {
             if (func.getName().equals(name)) {
                 return func;
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * Resolve a data type by name or path
      *
@@ -240,17 +252,17 @@ public class FunctionPrototypeService implements Service {
         if (program == null || typeNameOrPath == null || typeNameOrPath.isEmpty()) {
             return null;
         }
-        
+
         DataType resolvedType;
-        
+
         // Check for built-in types first (more efficient for common types)
         resolvedType = BuiltInDataTypeManager.getDataTypeManager().getDataType(typeNameOrPath);
-        
+
         // If not found as built-in, check in the program's data type manager
         if (resolvedType == null) {
             resolvedType = program.getDataTypeManager().getDataType(typeNameOrPath);
         }
-        
+
         // Handle pointer types (indicated by * suffix)
         if (resolvedType == null && typeNameOrPath.endsWith("*")) {
             String baseTypeName = typeNameOrPath.substring(0, typeNameOrPath.length() - 1).trim();
@@ -259,14 +271,14 @@ public class FunctionPrototypeService implements Service {
                 resolvedType = program.getDataTypeManager().getPointer(baseType);
             }
         }
-        
+
         // Try finding by symbol path as last resort
         if (resolvedType == null) {
             try {
                 // Look for matching symbols
-                List<ghidra.program.model.symbol.Symbol> symbols = 
+                List<ghidra.program.model.symbol.Symbol> symbols =
                     NamespaceUtils.getSymbols(typeNameOrPath, program);
-                
+
                 // If we found symbols, check if they correspond to data types
                 if (!symbols.isEmpty()) {
                     for (ghidra.program.model.symbol.Symbol symbol : symbols) {
@@ -277,17 +289,17 @@ public class FunctionPrototypeService implements Service {
                         }
                     }
                 }
-            } 
+            }
             catch (Exception e) {
                 Msg.error(this, "Error parsing data type path: " + typeNameOrPath, e);
             }
         }
-        
+
         // Final fallback: search by simple name
         if (resolvedType == null) {
             List<DataType> foundTypes = new ArrayList<>();
             program.getDataTypeManager().findDataTypes(typeNameOrPath, foundTypes);
-            
+
             if (foundTypes.size() == 1) {
                 resolvedType = foundTypes.get(0);
             }
@@ -297,10 +309,10 @@ public class FunctionPrototypeService implements Service {
                 resolvedType = foundTypes.get(0);
             }
         }
-        
+
         return resolvedType;
     }
-    
+
     /**
      * Get detailed information about a function
      *
@@ -314,7 +326,7 @@ public class FunctionPrototypeService implements Service {
         details.put("signature", function.getSignature().toString());
         details.put("returnType", function.getReturnType().toString());
         details.put("parameterCount", function.getParameterCount());
-        
+
         // Include namespace information
         details.put("namespace", function.getParentNamespace().getName());
 
@@ -336,7 +348,7 @@ public class FunctionPrototypeService implements Service {
 
         return details;
     }
-    
+
     /**
      * Creates a standardized error response with default error code (400)
      *

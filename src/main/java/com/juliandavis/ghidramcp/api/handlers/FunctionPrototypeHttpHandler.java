@@ -87,6 +87,7 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
         } else if (forceUpdateObj instanceof Boolean) {
             forceUpdate = (Boolean) forceUpdateObj; // Handle if it's already boolean
         }
+        String updateTypeStr = (String) params.getOrDefault("updateType", "DYNAMIC_STORAGE_ALL_PARAMS"); // Default if not provided
 
         // Extract parameters array
         List<Map<String, String>> parameterDefinitions = new ArrayList<>();
@@ -122,8 +123,9 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
         }
 
         // Call the service to set the function prototype
+        // Call the service, passing the new updateType string
         Map<String, Object> result = functionPrototypeService.setFunctionPrototype(
-                functionName, returnType, parameterDefinitions, callingConvention, forceUpdate);
+                functionName, returnType, parameterDefinitions, callingConvention, forceUpdate, updateTypeStr);
 
         sendJsonResponse(exchange, result);
     }
