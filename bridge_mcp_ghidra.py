@@ -1258,9 +1258,8 @@ def get_complete_function_stats() -> Dict[str, Any]:
     return all_stats
 
 @mcp.tool()
-def set_function_prototype(function_name: str, return_type: str, parameters: List[Dict[str, str]], # Add optional 'storage': str to dict
-                           calling_convention: str = None, force_update: bool = False,
-                           update_type: str = "DYNAMIC_STORAGE_ALL_PARAMS") -> Dict[str, Any]:
+def set_function_prototype(function_name: str, return_type: str, parameters: List[Dict[str, str]],
+                           calling_convention: str = None, rename_option: str = "RENAME_IF_DEFAULT") -> Dict[str, Any]: # REMOVED update_type
     """
     Set a function prototype (signature) for a function.
 
@@ -1269,12 +1268,7 @@ def set_function_prototype(function_name: str, return_type: str, parameters: Lis
         return_type: The return type name
         parameters: List of parameter definitions (name, type, and optional storage string pairs)
         calling_convention: Optional calling convention (can be null to keep existing)
-        force_update: Whether to force update even if parameters might be incompatible
-        update_type: How parameter storage should be handled. Defaults to DYNAMIC_STORAGE_ALL_PARAMS.
-                     Possible values:
-                     - DYNAMIC_STORAGE_ALL_PARAMS: Auto-assign storage based on convention. May fail for complex cases.
-                     - DYNAMIC_STORAGE_FORMAL_PARAMS: Auto-assign for formal params only.
-                     - CUSTOM_STORAGE: Parameters must include explicit storage info via the 'storage' key (e.g., "EAX", "Stack[0x8]").
+        rename_option: Controls function renaming ("RENAME", "RENAME_IF_DEFAULT", "NO_CHANGE"). Defaults to RENAME_IF_DEFAULT.
 
     Returns:
         Dictionary containing the result of the operation
@@ -1292,17 +1286,16 @@ def set_function_prototype(function_name: str, return_type: str, parameters: Lis
         return {"status": "error", "error": {"message": "Parameters list is required", "code": 400}}
 
     # Convert parameters to a format that can be properly serialized
-    # JSON-serialize the parameters list - the endpoint expects JSON here
-    import json
-    params_json = json.dumps(parameters)
+    # No need to manually JSON dump, requests handles it
+    # import json
+    # params_json = json.dumps(parameters)
 
     # Construct the request payload - careful with the serialization formats
     payload = {
         "functionName": function_name,
         "returnType": return_type,
-        "parameters": params_json,  # JSON string of parameters
-        "forceUpdate": str(force_update).lower(), # String "true" or "false"
-        "updateType": update_type # Add the new parameter
+        "parameters": parameters,  # Pass the list directly
+        "rename_option": rename_option, # Use the new rename_option string
     }
 
     # Add calling convention if specified

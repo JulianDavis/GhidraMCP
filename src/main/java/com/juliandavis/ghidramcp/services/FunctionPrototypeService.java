@@ -2,68 +2,71 @@ package com.juliandavis.ghidramcp.services;
 
 import com.juliandavis.ghidramcp.core.service.Service;
 
-import ghidra.program.model.data.DataType;
+import ghidra.app.script.GhidraScript;
+import ghidra.app.services.ConsoleService;
+import ghidra.framework.plugintool.PluginTool;
+import ghidra.program.model.data.*;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.Function.FunctionUpdateType;
 import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.SourceType;
-import ghidra.program.model.data.BuiltInDataTypeManager;
-import ghidra.app.util.NamespaceUtils;
+import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
+import ghidra.app.cmd.function.FunctionRenameOption; // Import needed for constructor
 import ghidra.util.Msg;
-import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
-import ghidra.program.model.listing.ParameterImpl;
-import ghidra.program.model.listing.VariableStorage; // Import VariableStorage
-import ghidra.program.model.lang.ProgramArchitecture; // Import ProgramArchitecture
+import ghidra.program.model.listing.VariableStorage; // Needed for getFunctionDetails
+// ParameterImpl is not needed for the new approach
+import ghidra.program.model.lang.ProgramArchitecture;
+// import ghidra.program.model.listing.ParameterImpl;
+import ghidra.util.task.ConsoleTaskMonitor; // Needed for running the command
 import java.util.*;
 
 /**
  * Service for managing function prototypes (signatures) in Ghidra.
+ * Uses direct API calls for setting convention/return type and manual parameter manipulation for custom storage.
  */
 public class FunctionPrototypeService implements Service {
 
     public static final String SERVICE_NAME = "FunctionPrototypeService";
     private Program program;
+    private ProgramArchitecture programArch; // Store architecture
+    private PluginTool tool;
 
-    /**
-     * Get the service name
-     *
-     * @return The service name
-     */
+    // Constructor now takes PluginTool
+    public FunctionPrototypeService(PluginTool tool) {
+        this.tool = tool;
+    }
+
     @Override
     public String getName() {
         return SERVICE_NAME;
     }
 
-    /**
-     * Initialize the service with the current program.
-     *
-     * @param program the current Ghidra program
-     */
     @Override
     public void initialize(Program program) {
         this.program = program;
+        if (program != null) {
+            // Get architecture once during initialization
+            this.programArch = program.getDataTypeManager().getProgramArchitecture();
+        } else {
+            this.programArch = null;
+        }
     }
 
-    /**
-     * Dispose of service resources
-     */
     @Override
     public void dispose() {
-        // No resources to dispose
         this.program = null;
+        this.programArch = null;
     }
 
     /**
-     * Set a function prototype (signature) for a function
+     * Set a function prototype (signature) for a function using a hybrid approach.
      *
      * @param functionName The name of the function to modify
      * @param returnType The return type name
-     * @param parameterDefinitions List of parameter definitions (name and type pairs)
-     * @param callingConvention Optional calling convention (can be null to keep existing)
-     * @param forceUpdate Whether to force update even if parameters might be incompatible
-     * @param updateTypeStr String representation of FunctionUpdateType (e.g., "DYNAMIC_STORAGE_ALL_PARAMS")
+     * @param parameterDefinitions List of parameter definitions (name, type, storage)
+     * @param callingConvention Optional calling convention name (e.g., "__thiscall", "__stdcall")
+     * @param renameOption Controls function renaming ("RENAME", "RENAME_IF_DEFAULT", "NO_CHANGE"). Defaults to RENAME_IF_DEFAULT.
      * @return Map containing the result of the operation
      */
     public Map<String, Object> setFunctionPrototype(
@@ -71,186 +74,188 @@ public class FunctionPrototypeService implements Service {
             String returnType,
             List<Map<String, String>> parameterDefinitions,
             String callingConvention,
-            boolean forceUpdate,
-            String updateTypeStr) { // Add new parameter
+            String renameOptionStr) {
+        Msg.info(this, "setFunctionPrototype called for: " + functionName);
+        Msg.info(this, "  Return Type: " + returnType);
+        Msg.info(this, "  Parameters: " + parameterDefinitions);
+        Msg.info(this, "  Calling Convention: " + callingConvention);
+        Msg.info(this, "  Rename Option: " + renameOptionStr);
 
-        if (program == null) {
-            return createErrorResponse("No program loaded");
+        if (program == null || programArch == null) {
+            return createErrorResponse("No program loaded or architecture not available");
         }
-
         if (functionName == null || functionName.isEmpty()) {
             return createErrorResponse("Function name is required");
         }
-
         if (returnType == null || returnType.isEmpty()) {
             return createErrorResponse("Return type is required");
         }
 
+        Function function = null;
+
         try {
-            // Find the function by name
-            Function function = findFunction(functionName);
+            function = findFunction(functionName);
             if (function == null) {
+                Msg.error(this, "Function not found: " + functionName);
                 return createErrorResponse("Function not found: " + functionName);
             }
 
-            // Resolve the return data type
             DataType returnDataType = resolveDataType(returnType);
             if (returnDataType == null) {
+                Msg.error(this, "Could not resolve return type: " + returnType);
                 return createErrorResponse("Could not resolve return type: " + returnType);
             }
+            Msg.info(this, "Resolved return type: " + returnDataType.getName());
 
-            // Create the parameter definitions using the example approach
-            List<Parameter> newParams = new ArrayList<>();
-
-            // Build the new parameter list
-            for (int i = 0; i < parameterDefinitions.size(); i++) {
-                Map<String, String> paramDef = parameterDefinitions.get(i);
-                String paramName = paramDef.get("name");
-                String paramType = paramDef.get("type");
-
-                if (paramName == null || paramName.isEmpty()) {
-                    return createErrorResponse("Parameter name is required");
-                }
-
-                if (paramType == null || paramType.isEmpty()) {
-                    return createErrorResponse("Parameter type is required");
-                }
-
-                DataType paramDataType = resolveDataType(paramType);
-                if (paramDataType == null) {
-                    return createErrorResponse("Could not resolve parameter type: " + paramType);
-                }
-
-                // Get or create parameters using the function's createParameter method
-                try {
-                    // Create or get parameter for the ordinal
-                    Parameter param;
-                    if (i < function.getParameterCount()) {
-                        // Modify existing parameter
-                        param = function.getParameter(i);
-                        // We'll update its type and name in the transaction below
-                    } else {
-                        // Create a placeholder - actual parameter will be created in transaction
-                        param = null;
-                    }
-
-                    // Add to our list (could be null for new parameters)
-                    newParams.add(param);
-                } catch (Exception e) {
-                    return createErrorResponse("Error creating parameter: " + e.getMessage());
-                }
-            }
-
-            // Begin transaction
-            int txId = program.startTransaction("Set Function Prototype: " + functionName);
+            // --- ApplyFunctionSignatureCmd Approach (using tool.execute) ---
             boolean success = false;
-            String message;
+            String message = "An unexpected error occurred."; // Default error message
 
             try {
-                // Set the return type
-                function.setReturnType(returnDataType, SourceType.USER_DEFINED);
+                 // Transaction and monitor handled by tool.execute
+                 DataTypeManager dtm = program.getDataTypeManager();
 
-                // Set calling convention if specified
-                if (callingConvention != null && !callingConvention.isEmpty()) {
-                    function.setCallingConvention(callingConvention);
-                }
+                 // 1. Resolve Parameter Data Types and Create Parameter Definitions (Reverted: No filtering)
+                 List<ParameterDefinition> params = new ArrayList<>();
+                 for (Map<String, String> paramDef : parameterDefinitions) {
+                     String paramName = paramDef.get("name");
+                     String paramType = paramDef.get("type");
 
-                // Following the method signature from the documentation:
-                // void replaceParameters(List<? extends Variable> params, Function.FunctionUpdateType updateType, boolean force, SourceType source)
+                     if (paramName == null || paramName.isEmpty()) {
+                          throw new InvalidInputException("Parameter name is required.");
+                     }
+                      if (paramType == null || paramType.isEmpty()) {
+                          throw new InvalidInputException("Parameter type is required for parameter: " + paramName);
+                     }
 
-                // For this, we need a list of Variables (Parameters are Variables)
-                // We can use our newParams list directly
+                     DataType paramDataType = resolveDataType(paramType);
+                     if (paramDataType == null) {
+                         Msg.error(this, "Could not resolve parameter type: " + paramType + " for parameter: " + paramName);
+                         throw new InvalidInputException("Could not resolve parameter type: " + paramType + " for parameter: " + paramName);
+                     }
+                     params.add(new ParameterDefinitionImpl(paramName, paramDataType, null));
+                     Msg.info(this, "  Resolved param '" + paramName + "' type: " + paramDataType.getName()); // Moved inside loop
+                 }
 
-                // Convert updateTypeStr to FunctionUpdateType enum *before* creating parameters
-                FunctionUpdateType updateType;
-                try {
-                    updateType = FunctionUpdateType.valueOf(updateTypeStr.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    Msg.warn(this, "Invalid FunctionUpdateType string: " + updateTypeStr + ". Defaulting to DYNAMIC_STORAGE_ALL_PARAMS.");
-                    updateType = FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS; // Default on error
-                } catch (NullPointerException e) {
-                     Msg.warn(this, "Null FunctionUpdateType string provided. Defaulting to DYNAMIC_STORAGE_ALL_PARAMS.");
-                     updateType = FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS; // Default on null
-                }
+                 // 2. Create Function Definition Data Type
+                 CategoryPath categoryPath = dtm.getRootCategory().getCategoryPath();
+                 // Use a distinct name for the signature to avoid potential conflicts if the function name itself is being changed
+                 String signatureName = function.getName() + "_prototype";
+                 Msg.info(this, "Prepared ParameterDefinition list (size " + params.size() + "): " + params);
+                 FunctionDefinitionDataType newSignature = new FunctionDefinitionDataType(categoryPath, signatureName, dtm);
 
-                // Create actual parameter objects based on updateType
-                List<Parameter> parameters = new ArrayList<>();
-                // Get ProgramArchitecture via DataTypeManager
-                ProgramArchitecture programArch = program.getDataTypeManager().getProgramArchitecture();
+                 // 3. Set Return Type, Parameters, and Calling Convention
+                 newSignature.setReturnType(returnDataType);
+                 newSignature.setArguments(params.toArray(new ParameterDefinition[0])); // Use the full parameter list
 
-                for (Map<String, String> paramDef : parameterDefinitions) {
-                    String paramName = paramDef.get("name");
-                    String paramType = paramDef.get("type");
-                    String storageString = paramDef.get("storage"); // Get storage string from handler
+                 // 3. Determine and *explicitly set* the calling convention on the new signature
+                 String targetCallingConvention = callingConvention;
+                 if (targetCallingConvention == null || targetCallingConvention.isEmpty()) {
+                     // If not specified in request, use the function's current convention
+                     targetCallingConvention = function.getCallingConventionName();
+                 }
+                 // Ensure we don't try to set a null/empty convention name
+                 if (targetCallingConvention != null && !targetCallingConvention.isEmpty() && !"unknown".equals(targetCallingConvention)) { // Use string literal
+                      try {
+                           newSignature.setCallingConvention(targetCallingConvention);
+                           Msg.info(this, "Explicitly set calling convention '" + targetCallingConvention + "' on FunctionDefinitionDataType.");
+                      } catch (InvalidInputException e) {
+                           // This might happen if the provided name is invalid
+                           // Corrected Exception handling: Just pass the message string
+                           throw new InvalidInputException("Invalid calling convention name provided: " + targetCallingConvention);
+                      }
+                 } else {
+                      Msg.warn(this, "No valid calling convention specified or found for function; signature will use default.");
+                      // Let newSignature keep its default convention if none is specified or found
+                 }
+                 Msg.info(this, "Configured newSignature: " + newSignature.getPrototypeString());
 
-                    DataType paramDataType = resolveDataType(paramType);
-                    if (paramDataType == null) {
-                         // Throw exception to be caught by the outer catch block
-                         throw new InvalidInputException("Could not resolve parameter type: " + paramType);
-                    }
+                 // 4. Determine Rename Option based on renameOptionStr input
+                 FunctionRenameOption renameOption;
+                 if (renameOptionStr == null || renameOptionStr.isEmpty() || "RENAME_IF_DEFAULT".equalsIgnoreCase(renameOptionStr)) {
+                     renameOption = FunctionRenameOption.RENAME_IF_DEFAULT;
+                 } else if ("RENAME".equalsIgnoreCase(renameOptionStr)) {
+                     renameOption = FunctionRenameOption.RENAME;
+                 } else if ("NO_CHANGE".equalsIgnoreCase(renameOptionStr)) {
+                     renameOption = FunctionRenameOption.NO_CHANGE;
+                 } else {
+                     throw new InvalidInputException("Invalid renameOption specified: " + renameOptionStr +
+                             ". Must be one of RENAME, RENAME_IF_DEFAULT, NO_CHANGE.");
+                 }
+                 Msg.info(this, "Determined renameOption: " + renameOption);
 
-                    Parameter param;
-                    if (updateType == FunctionUpdateType.CUSTOM_STORAGE) {
-                        if (storageString == null || storageString.trim().isEmpty()) {
-                            throw new InvalidInputException("CUSTOM_STORAGE requires a non-empty 'storage' string for parameter: " + paramName);
-                        }
-                        try {
-                            // Deserialize the storage string
-                            VariableStorage storage = VariableStorage.deserialize(programArch, storageString);
-                            if (storage == null || !storage.isValid()) {
-                                throw new InvalidInputException("Invalid or unparsable storage string '" + storageString + "' for parameter: " + paramName);
-                            }
-                            // Create parameter with custom storage
-                            param = new ParameterImpl(paramName, paramDataType, storage, program);
-                        } catch (Exception e) { // Catch potential errors during deserialize
-                             throw new InvalidInputException("Error parsing storage string '" + storageString + "' for parameter " + paramName + ": " + e.getMessage());
-                        }
-                    } else {
-                        // Create parameter without explicit storage for dynamic types
-                        param = new ParameterImpl(paramName, paramDataType, program);
-                    }
-                    parameters.add(param);
-                }
+                 // 5. Create and Apply the Command using the non-deprecated constructor
+                 ApplyFunctionSignatureCmd cmd = new ApplyFunctionSignatureCmd(
+                         function.getEntryPoint(),
+                         newSignature,
+                         SourceType.USER_DEFINED,
+                         true, // preserveCallingConvention - TRY TRUE: Preserve if function already has it
+                         false, // applyEmptyComposites - default to false
+                         DataTypeConflictHandler.DEFAULT_HANDLER, // conflictHandler - use default
+                         renameOption // functionRenameOption - based on renameOptionStr
+                 );
+                 Msg.info(this, "Created ApplyFunctionSignatureCmd. Preserving convention: " + true + ", Rename option: " + renameOption);
 
+                 // Execute the command using PluginTool, which handles transactions and monitoring
+                 Msg.info(this, "Executing command via tool.execute...");
+                 success = tool.execute(cmd, program); // Pass program as the second argument
+                 Msg.info(this, "tool.execute completed. Success: " + success);
 
-                // Call the actual method with the correct signature
-                // updateType enum is already resolved above
+                 if (success) {
+                     message = "Function prototype updated successfully using ApplyFunctionSignatureCmd.";
+                 } else {
+                     // cmd.getStatusMsg() might provide more details on failure
+                     String cmdStatus = cmd.getStatusMsg();
+                     message = "Failed to apply function signature command.";
+                     if (cmdStatus != null && !cmdStatus.isEmpty()) {
+                         message += " Reason: " + cmdStatus;
+                     }
+                     Msg.error(this, message + " (cmd status: " + cmdStatus + ")");
+                 }
 
-                // Call the actual method with the correct signature, using the resolved updateType
-                function.replaceParameters(parameters, updateType, forceUpdate, SourceType.USER_DEFINED);
-
-                success = true;
-                message = "Function prototype updated successfully";
-            } catch (DuplicateNameException e) {
-                message = "Error updating function prototype: duplicate parameter name: " + e.getMessage();
-                Msg.error(this, message, e);
-            } catch (InvalidInputException e) {
-                message = "Error updating function prototype: invalid input: " + e.getMessage();
-                Msg.error(this, message, e);
-            } catch (Exception e) {
-                message = "Error updating function prototype: " + e.getMessage();
-                Msg.error(this, message, e);
-            } finally {
-                program.endTransaction(txId, success);
+            } catch (InvalidInputException e) { // Catch errors during setup (before command execution)
+                 message = "Error preparing function signature update: " + e.getMessage();
+                 Msg.error(this, message, e);
+                 success = false;
+                 // No transaction to abort here as tool.execute wasn't reached
+            } catch (Exception e) { // Catch other unexpected exceptions
+                 message = "Unexpected error updating function prototype: " + e.getMessage();
+                 Msg.error(this, message, e);
+                 success = false;
+                 // No transaction to abort here
             }
+            // --- End ApplyFunctionSignatureCmd Approach ---
 
-            // Prepare the response
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", success);
-            result.put("message", message);
-            result.put("functionName", functionName);
+            // Construct the final response outside the try-catch for the command execution
+            Map<String, Object> resultData = new HashMap<>();
+            resultData.put("functionName", functionName);
+            resultData.put("message", message); // Include the final message (success or error)
+
+            // Refresh function details only on success
+            Function updatedFunction = findFunction(functionName); // Attempt to find function regardless of success
+            if (updatedFunction != null) {
+                 resultData.put("function", getFunctionDetails(updatedFunction));
+            } else if (success) {
+                 // Only warn if the command succeeded but we can't find the function afterwards
+                 Msg.warn(this, "Function could not be found after successful signature update: " + functionName);
+            }
 
             if (success) {
-                // Include the updated function details
-                result.put("function", getFunctionDetails(function));
+                 return createSuccessResponse(resultData);
+            } else {
+                 // Error occurred, return error response with the message set in the catch blocks
+                 Msg.info(this, "Returning error response: " + message);
+                 return createErrorResponse(message);
             }
 
-            return createSuccessResponse(result);
-
-        } catch (Exception e) {
-            Msg.error(this, "Error setting function prototype", e);
-            return createErrorResponse("Error: " + e.getMessage());
+        } catch (Exception e) { // Catch errors during initial setup (e.g., finding function, resolving return type)
+            Msg.error(this, "Error setting function prototype (initial setup)", e);
+            // Ensure a transaction isn't left open if an error occurs very early
+            // (No transaction should be active here as txId is initialized to -1)
+            Msg.error(this, "Outer catch block: " + e.getMessage(), e);
+            return createErrorResponse("Setup Error: " + e.getMessage());
         }
+        // This part should now be unreachable due to returns in the blocks above
     }
 
     /**
@@ -263,14 +268,12 @@ public class FunctionPrototypeService implements Service {
         if (program == null || name == null || name.isEmpty()) {
             return null;
         }
-
-        // Try to find the function by name
         for (Function func : program.getFunctionManager().getFunctions(true)) {
-            if (func.getName().equals(name)) {
+            // Consider matching full name with namespace if needed later
+            if (func.getName(true).equals(name) || func.getName().equals(name)) {
                 return func;
             }
         }
-
         return null;
     }
 
@@ -284,62 +287,56 @@ public class FunctionPrototypeService implements Service {
         if (program == null || typeNameOrPath == null || typeNameOrPath.isEmpty()) {
             return null;
         }
+        DataTypeManager dtm = program.getDataTypeManager();
 
-        DataType resolvedType;
-
-        // Check for built-in types first (more efficient for common types)
-        resolvedType = BuiltInDataTypeManager.getDataTypeManager().getDataType(typeNameOrPath);
-
-        // If not found as built-in, check in the program's data type manager
-        if (resolvedType == null) {
-            resolvedType = program.getDataTypeManager().getDataType(typeNameOrPath);
-        }
-
-        // Handle pointer types (indicated by * suffix)
-        if (resolvedType == null && typeNameOrPath.endsWith("*")) {
+        // 1. Handle Pointers Recursively
+        if (typeNameOrPath.endsWith("*")) {
             String baseTypeName = typeNameOrPath.substring(0, typeNameOrPath.length() - 1).trim();
-            DataType baseType = resolveDataType(baseTypeName);
+            if (baseTypeName.isEmpty()) {
+                 Msg.error(this, "Invalid pointer type specified: " + typeNameOrPath);
+                 return null; // Cannot have a pointer to nothing
+            }
+            DataType baseType = resolveDataType(baseTypeName); // Recursive call
             if (baseType != null) {
-                resolvedType = program.getDataTypeManager().getPointer(baseType);
+                // Use PointerDataType constructor for consistency with Python example
+                return new PointerDataType(baseType, dtm);
+            } else {
+                Msg.warn(this, "Could not resolve base type '" + baseTypeName + "' for pointer type '" + typeNameOrPath + "'");
+                return null; // Base type not found
             }
         }
 
-        // Try finding by symbol path as last resort
-        if (resolvedType == null) {
-            try {
-                // Look for matching symbols
-                List<ghidra.program.model.symbol.Symbol> symbols =
-                    NamespaceUtils.getSymbols(typeNameOrPath, program);
+        // 2. Handle Non-Pointers: Prioritize Program DTM (including paths)
+        DataType resolvedType = dtm.getDataType(typeNameOrPath);
 
-                // If we found symbols, check if they correspond to data types
-                if (!symbols.isEmpty()) {
-                    for (ghidra.program.model.symbol.Symbol symbol : symbols) {
-                        Object obj = symbol.getObject();
-                        if (obj instanceof ghidra.program.model.data.DataType) {
-                            resolvedType = (ghidra.program.model.data.DataType) obj;
-                            break;
-                        }
-                    }
-                }
-            }
-            catch (Exception e) {
-                Msg.error(this, "Error parsing data type path: " + typeNameOrPath, e);
-            }
-        }
-
-        // Final fallback: search by simple name
+        // 3. Fallback: Search Program DTM by simple name (if not found by path/name directly)
         if (resolvedType == null) {
             List<DataType> foundTypes = new ArrayList<>();
-            program.getDataTypeManager().findDataTypes(typeNameOrPath, foundTypes);
-
+            // Use findDataTypes which searches by name across categories
+            dtm.findDataTypes(typeNameOrPath, foundTypes);
             if (foundTypes.size() == 1) {
                 resolvedType = foundTypes.get(0);
-            }
-            else if (foundTypes.size() > 1) {
-                Msg.warn(this, "Ambiguous data type name: " + typeNameOrPath + ". Found multiple matches.");
-                // Just use the first one
+                 Msg.info(this, "Resolved ambiguous type name '" + typeNameOrPath + "' to '" + resolvedType.getPathName() + "' using findDataTypes.");
+            } else if (foundTypes.size() > 1) {
+                // Log ambiguity but maybe still try the first one? Or error out?
+                // Let's log and return the first for now, consistent with previous logic.
                 resolvedType = foundTypes.get(0);
+                Msg.warn(this, "Ambiguous data type name: '" + typeNameOrPath + "'. Found " + foundTypes.size() + " matches. Using first: " + resolvedType.getPathName());
+                // Consider throwing an error or returning null for ambiguity if strictness is desired.
             }
+        }
+
+        // 4. Fallback: Check BuiltIn Types (should usually be found by dtm.getDataType already)
+        if (resolvedType == null) {
+            resolvedType = BuiltInDataTypeManager.getDataTypeManager().getDataType(typeNameOrPath);
+             if (resolvedType != null) {
+                 Msg.info(this, "Resolved type '" + typeNameOrPath + "' as a BuiltIn type.");
+             }
+        }
+
+        // 5. Final Check and Log if Not Found
+        if (resolvedType == null) {
+             Msg.warn(this, "Could not resolve data type: " + typeNameOrPath);
         }
 
         return resolvedType;
@@ -353,35 +350,45 @@ public class FunctionPrototypeService implements Service {
      */
     private Map<String, Object> getFunctionDetails(Function function) {
         Map<String, Object> details = new HashMap<>();
-        details.put("name", function.getName());
+        details.put("name", function.getName(true)); // Use true for full namespace
         details.put("address", function.getEntryPoint().toString());
         details.put("signature", function.getSignature().toString());
-        details.put("returnType", function.getReturnType().toString());
+        details.put("returnType", function.getReturnType().getDisplayName()); // Use DisplayName
         details.put("parameterCount", function.getParameterCount());
-
-        // Include namespace information
-        details.put("namespace", function.getParentNamespace().getName());
-
-        // Include calling convention if available
+        details.put("namespace", function.getParentNamespace().getName(true)); // Use true for full namespace
         if (function.getCallingConvention() != null) {
-            details.put("callingConvention", function.getCallingConvention().toString());
+            details.put("callingConvention", function.getCallingConvention().getName());
         }
-
-        // Get parameter details if available
         List<Map<String, Object>> parameters = new ArrayList<>();
-        for (int i = 0; i < function.getParameterCount(); i++) {
-            Map<String, Object> param = new HashMap<>();
-            param.put("name", function.getParameter(i).getName());
-            param.put("dataType", function.getParameter(i).getDataType().getName());
-            param.put("ordinal", function.getParameter(i).getOrdinal());
-            parameters.add(param);
+        for (Parameter param : function.getParameters()) {
+            Map<String, Object> paramDetails = new HashMap<>();
+            paramDetails.put("name", param.getName());
+            paramDetails.put("dataType", param.getDataType().getDisplayName()); // Use DisplayName
+            paramDetails.put("ordinal", param.getOrdinal());
+            // Storage details are less relevant with ApplyFunctionSignatureCmd managing it
+            // try {
+            //      paramDetails.put("storage", param.getVariableStorage().toString());
+            // } catch (InvalidInputException e) {
+            //      paramDetails.put("storage", "invalid");
+            // }
+            try {
+                VariableStorage storage = param.getVariableStorage();
+                if (storage != null && storage.isValid()) {
+                    paramDetails.put("storage", storage.toString());
+                } else {
+                    paramDetails.put("storage", "default/invalid");
+                }
+            } catch (Exception e) { // Catch any exception during storage retrieval
+                 Msg.warn(this, "Error retrieving storage for parameter " + param.getName() + ": " + e.getMessage());
+                 paramDetails.put("storage", "error retrieving");
+            }
+            parameters.add(paramDetails);
         }
         details.put("parameters", parameters);
-
         return details;
     }
 
-    /**
+     /**
      * Creates a standardized error response with default error code (400)
      *
      * @param errorMessage The error message
@@ -401,16 +408,10 @@ public class FunctionPrototypeService implements Service {
     private Map<String, Object> createErrorResponse(String errorMessage, int errorCode) {
         Map<String, Object> response = new HashMap<>();
         Map<String, Object> errorDetails = new HashMap<>();
-
-        // Standard top-level structure
         response.put("status", "error");
-
-        // Error details
         errorDetails.put("message", errorMessage);
         errorDetails.put("code", errorCode);
-
         response.put("error", errorDetails);
-
         return response;
     }
 
@@ -422,11 +423,8 @@ public class FunctionPrototypeService implements Service {
      */
     private Map<String, Object> createSuccessResponse(Map<String, Object> data) {
         Map<String, Object> response = new HashMap<>();
-
-        // Standard top-level structure
         response.put("status", "success");
         response.put("data", data);
-
         return response;
     }
 }

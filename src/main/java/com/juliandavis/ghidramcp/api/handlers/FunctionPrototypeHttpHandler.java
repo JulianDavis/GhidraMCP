@@ -42,7 +42,14 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
 
         // If it doesn't exist, create and register it
         if (service == null) {
-            service = new FunctionPrototypeService();
+            // Ensure we have the plugin instance to get the tool
+            if (plugin == null) {
+                 // This shouldn't happen if the handler is constructed correctly, but handle defensively
+                 Msg.error(this, "Cannot create FunctionPrototypeService: GhidraMCPPlugin instance is null.");
+                 // Depending on desired behavior, could throw an exception or return null
+                 return null; // Or throw new IllegalStateException(...)
+            }
+            service = new FunctionPrototypeService(plugin.getTool()); // Pass PluginTool to constructor
             ServiceRegistry.getInstance().registerService(service);
         }
 
@@ -79,15 +86,13 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
         String functionName = (String) params.get("functionName");
         String returnType = (String) params.get("returnType");
         String callingConvention = (String) params.get("callingConvention"); // Optional
-        // Parse boolean from string, handling potential null or incorrect type
-        Object forceUpdateObj = params.get("forceUpdate");
-        boolean forceUpdate = false; // Default value
-        if (forceUpdateObj instanceof String) {
-            forceUpdate = Boolean.parseBoolean((String) forceUpdateObj);
-        } else if (forceUpdateObj instanceof Boolean) {
-            forceUpdate = (Boolean) forceUpdateObj; // Handle if it's already boolean
+        // Extract renameOption string (replacing forceUpdate)
+        // Default to "RENAME_IF_DEFAULT" if not provided or empty
+        String renameOptionStr = (String) params.getOrDefault("rename_option", "RENAME_IF_DEFAULT");
+        if (renameOptionStr == null || renameOptionStr.trim().isEmpty()) {
+            renameOptionStr = "RENAME_IF_DEFAULT";
         }
-        String updateTypeStr = (String) params.getOrDefault("updateType", "DYNAMIC_STORAGE_ALL_PARAMS"); // Default if not provided
+        // String updateTypeStr = (String) params.getOrDefault("updateType", "DYNAMIC_STORAGE_ALL_PARAMS"); // REMOVED
 
         // Extract parameters array
         List<Map<String, String>> parameterDefinitions = new ArrayList<>();
@@ -125,9 +130,9 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
         }
 
         // Call the service to set the function prototype
-        // Call the service, passing the new updateType string
+        // Call the service (updateTypeStr removed)
         Map<String, Object> result = functionPrototypeService.setFunctionPrototype(
-                functionName, returnType, parameterDefinitions, callingConvention, forceUpdate, updateTypeStr);
+                functionName, returnType, parameterDefinitions, callingConvention, renameOptionStr);
 
         sendJsonResponse(exchange, result);
     }

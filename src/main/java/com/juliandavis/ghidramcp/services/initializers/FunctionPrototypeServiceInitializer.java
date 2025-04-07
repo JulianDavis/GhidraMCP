@@ -5,7 +5,10 @@ import com.juliandavis.ghidramcp.api.handlers.FunctionPrototypeHttpHandler;
 import com.juliandavis.ghidramcp.api.server.EndpointRegistry;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.core.service.initializer.BaseServiceInitializer;
+import com.juliandavis.ghidramcp.core.service.initializer.ServiceInitializer; // Added missing import
 import com.juliandavis.ghidramcp.services.FunctionPrototypeService;
+
+// Removed incorrect MemoryManipulationServiceInitializer class definition from this file
 
 /**
  * Initializer for the FunctionPrototypeService.
@@ -14,10 +17,9 @@ import com.juliandavis.ghidramcp.services.FunctionPrototypeService;
  * and for registering the corresponding HTTP handler with the endpoint registry.
  */
 public class FunctionPrototypeServiceInitializer extends BaseServiceInitializer<FunctionPrototypeService, FunctionPrototypeHttpHandler> {
-    
     /**
      * Create a new FunctionPrototypeServiceInitializer.
-     * 
+     *
      * @param plugin the GhidraMCPPlugin instance
      * @param serviceRegistry the service registry
      * @param endpointRegistry the endpoint registry
@@ -28,17 +30,17 @@ public class FunctionPrototypeServiceInitializer extends BaseServiceInitializer<
             EndpointRegistry endpointRegistry) {
         super(plugin, serviceRegistry, endpointRegistry);
     }
-    
+
     @Override
     protected FunctionPrototypeService createService() {
-        return new FunctionPrototypeService();
+        return new FunctionPrototypeService(plugin.getTool());
     }
-    
+
     @Override
     protected FunctionPrototypeHttpHandler createHttpHandler() {
         return new FunctionPrototypeHttpHandler(plugin);
     }
-    
+
     @Override
     protected String getServiceName() {
         return FunctionPrototypeService.SERVICE_NAME;
