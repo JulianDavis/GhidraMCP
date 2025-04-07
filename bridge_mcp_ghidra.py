@@ -2014,6 +2014,42 @@ def memory_clear(start_address: str, end_address: str) -> Dict[str, Any]:
     # safe_post already handles standardized responses and errors
     return response
 
+
+# ----------------------------------------------------------------------------------
+# Function Manipulation Functions
+# ----------------------------------------------------------------------------------
+
+@mcp.tool()
+def create_function(address: str) -> Dict[str, Any]:
+    """
+    Create a function at the specified address in Ghidra.
+
+    Args:
+        address: The address where the function should be created (e.g., "0x1400").
+
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - success: Boolean indicating success
+        - address: The address where the function was created/found
+        - name: The name of the function
+        - message: Status message
+        - alreadyExisted: Boolean indicating if the function already existed
+        Or an error dictionary on failure.
+    """
+    response = safe_post("function/create", {"address": address})
+
+    # safe_post already returns a dictionary, potentially an ErrorResult dict
+    # We can return it directly as the structure matches the expected output
+    if isinstance(response, dict):
+        # Check if it's a standardized success response from the service
+        if response.get("status") == "success" and "data" in response:
+            return response.get("data", {}) # Return the inner data dict
+        # Otherwise, it might be an error response or a direct result dict
+        return response
+    else:
+        # Should not happen with safe_post, but handle defensively
+        logger.error(f"Unexpected response type from safe_post for create_function: {type(response)}")
+        return ErrorResult.from_string(f"Unexpected response type: {type(response)}").to_dict()
 @mcp.tool()
 def disassemble_at_address(address: str, length: int = 10) -> Union[DisassemblyResult, ErrorResult]:
     """

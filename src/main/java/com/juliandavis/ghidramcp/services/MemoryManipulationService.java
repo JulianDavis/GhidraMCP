@@ -9,6 +9,8 @@ import ghidra.program.model.address.AddressFormatException;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
+import ghidra.app.cmd.function.CreateFunctionCmd; // Added import
+import ghidra.program.model.listing.Function; // Added import
 
 import java.util.HashMap;
 import java.util.Map;
@@ -141,6 +143,65 @@ public class MemoryManipulationService implements Service { // Implement Service
             return createErrorResult("Failed to clear memory range: " + ex.getMessage(), 500); // Use 'ex'
         } finally {
             currentProgram.endTransaction(transactionId, success);
+        }
+    }
+
+    /**
+     * Creates a function at the specified address using CreateFunctionCmd.
+     *
+     * @param addressStr The address string where the function should be created (e.g., "0x1400").
+     * @return A map indicating success (with function details) or an error map on failure.
+     */
+    public Map<String, Object> createFunctionAtAddress(String addressStr) {
+        if (currentProgram == null || tool == null) { // Check tool as well
+            return createErrorResult("No program loaded or service not initialized properly.", 503); // 503 Service Unavailable
+        }
+
+        Address entryPoint;
+        entryPoint = currentProgram.getAddressFactory().getAddress(addressStr);
+        if (entryPoint == null) {
+             return createErrorResult("Invalid address format or value: " + addressStr, 400); // 400 Bad Request
+        }
+
+        // Check if a function already exists at the entry point
+        Function existingFunction = currentProgram.getFunctionManager().getFunctionAt(entryPoint);
+        if (existingFunction != null) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("success", true);
+            data.put("address", entryPoint.toString());
+            data.put("name", existingFunction.getName());
+            data.put("message", "Function already exists at address " + entryPoint.toString());
+            data.put("alreadyExisted", true);
+            return createSuccessResult(data);
+        }
+
+
+        CreateFunctionCmd cmd = new CreateFunctionCmd(entryPoint);
+
+        // Execute the command - this handles transactions internally
+        boolean cmdSuccess = tool.execute(cmd, currentProgram);
+
+        if (cmdSuccess) {
+            // Retrieve the newly created function to return its details
+            Function newFunction = currentProgram.getFunctionManager().getFunctionAt(entryPoint);
+            if (newFunction != null) {
+                Map<String, Object> data = new HashMap<>();
+                data.put("success", true);
+                data.put("address", entryPoint.toString());
+                data.put("name", newFunction.getName()); // Get the actual name assigned
+                data.put("message", "Function created successfully at " + entryPoint.toString());
+                data.put("alreadyExisted", false);
+                 if (console != null) console.println("Successfully created function " + newFunction.getName() + " at " + entryPoint.toString());
+                return createSuccessResult(data);
+            } else {
+                 // Should not happen if cmdSuccess is true, but handle defensively
+                 if (console != null) console.printError("Command succeeded but failed to retrieve function at " + entryPoint.toString());
+                 return createErrorResult("Command succeeded but failed to retrieve the created function.", 500); // 500 Internal Server Error
+            }
+        } else {
+            String statusMsg = cmd.getStatusMsg(); // Get error message from the command
+            if (console != null) console.printError("Failed to create function at " + entryPoint.toString() + ": " + statusMsg);
+            return createErrorResult("Failed to create function: " + (statusMsg != null ? statusMsg : "Unknown error"), 500); // 500 Internal Server Error
         }
     }
 }

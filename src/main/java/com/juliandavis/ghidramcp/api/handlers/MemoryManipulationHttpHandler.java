@@ -25,15 +25,18 @@ public class MemoryManipulationHttpHandler extends BaseHttpHandler {
     // Remove programActivated and programDeactivated methods
 
     @Override
-    public void registerEndpoints() { // Must be public
-        HttpServer server = getServer(); // Get server instance from base class method
+    public void registerEndpoints() {
+        HttpServer server = getServer();
         if (server == null) {
              Msg.error(this, "HTTP Server not available for registering MemoryManipulation endpoints.");
              return;
         }
         // Clear memory range
         server.createContext("/memory/clear", this::handleClearMemoryRange);
-        Msg.info(this, "Registered endpoint: /memory/clear"); // Use Msg for logging
+        Msg.info(this, "Registered endpoint: /memory/clear");
+
+        server.createContext("/function/create", this::handleCreateFunction);
+        Msg.info(this, "Registered endpoint: /function/create");
     }
 
     // Remove createHandlerError, use base class createErrorResponse
@@ -94,6 +97,61 @@ public class MemoryManipulationHttpHandler extends BaseHttpHandler {
         } else {
             // Send success response using base class helper
             // The service already wrapped the data correctly, so just pass the result map
+            sendJsonResponse(exchange, result);
+        }
+    }
+
+    private void handleCreateFunction(HttpExchange exchange) throws IOException {
+         if (!isPostRequest(exchange)) {
+            sendMethodNotAllowedResponse(exchange);
+            return;
+        }
+
+        Program currentProgram = getCurrentProgram();
+        if (currentProgram == null) {
+             sendErrorResponse(exchange, "Service Unavailable: No active program.", 503);
+             return;
+        }
+
+        MemoryManipulationService memoryService = getService(
+            MemoryManipulationService.SERVICE_NAME,
+            MemoryManipulationService.class
+        );
+
+        if (memoryService == null) {
+             sendErrorResponse(exchange, "MemoryManipulationService not available.", 503);
+             return;
+        }
+
+        Map<String, String> params = parsePostParams(exchange);
+        String addressStr = params.get("address"); // Expect 'address' parameter
+
+        if (addressStr == null || addressStr.isEmpty()) {
+            sendErrorResponse(exchange, "Missing required parameter: address", 400);
+            return;
+        }
+
+        // Call the service method
+        Map<String, Object> result = memoryService.createFunctionAtAddress(addressStr);
+
+        // Check the status field in the result map and send appropriate response
+        if ("error".equals(result.get("status"))) {
+            int statusCode = 400; // Default
+            String message = "An error occurred."; // Default
+
+            if (result.containsKey("error") && result.get("error") instanceof Map) {
+                 @SuppressWarnings("unchecked")
+                 Map<String, Object> errorDetails = (Map<String, Object>) result.get("error");
+                 if (errorDetails.containsKey("code") && errorDetails.get("code") instanceof Number) {
+                    statusCode = ((Number) errorDetails.get("code")).intValue();
+                 }
+                 if (errorDetails.containsKey("message") && errorDetails.get("message") instanceof String) {
+                     message = (String) errorDetails.get("message");
+                 }
+            }
+            sendErrorResponse(exchange, message, statusCode);
+        } else {
+            // Send success response using base class helper
             sendJsonResponse(exchange, result);
         }
     }
