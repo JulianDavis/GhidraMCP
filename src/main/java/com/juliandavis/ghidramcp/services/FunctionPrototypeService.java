@@ -427,4 +427,84 @@ public class FunctionPrototypeService implements Service {
         response.put("data", data);
         return response;
     }
+
+    /**
+     * Apply function data types to a function at the specified address.
+     * Uses Ghidra's ApplyFunctionDataTypesCmd to automatically propagate defined types.
+     *
+     * @param functionAddressStr The address of the function as a string (e.g., "0x1400")
+     * @param alwaysReplace Whether to always replace existing function signatures (default: true)
+     * @param createBookmarks Whether to create bookmarks when a function signature is applied (default: true)
+     * @return Map containing the result of the operation
+     */
+    public Map<String, Object> applyFunctionDataTypes(
+            String functionAddressStr,
+            boolean alwaysReplace,
+            boolean createBookmarks) {
+        
+        Msg.info(this, "applyFunctionDataTypes called for address: " + functionAddressStr);
+        
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+        
+        if (functionAddressStr == null || functionAddressStr.isEmpty()) {
+            return createErrorResponse("Function address is required");
+        }
+        
+        try {
+            // Parse the address
+            ghidra.program.model.address.Address functionAddress = program.getAddressFactory().getAddress(functionAddressStr);
+            if (functionAddress == null) {
+                return createErrorResponse("Invalid address format: " + functionAddressStr);
+            }
+            
+            // Find the function at the specified address
+            Function function = program.getFunctionManager().getFunctionAt(functionAddress);
+            if (function == null) {
+                return createErrorResponse("No function found at address: " + functionAddressStr);
+            }
+            
+            // Create an address set from the function's entry point
+            ghidra.program.model.address.AddressSet addressSet = new ghidra.program.model.address.AddressSet(functionAddress);
+            
+            // Create the command using the program's data type manager
+            ghidra.app.cmd.function.ApplyFunctionDataTypesCmd cmd = 
+                new ghidra.app.cmd.function.ApplyFunctionDataTypesCmd(
+                    program.getDataTypeManager().getRootCategory(), // Use the root category to search all data types
+                    addressSet,
+                    ghidra.program.model.symbol.SourceType.USER_DEFINED,
+                    alwaysReplace,
+                    createBookmarks
+                );
+            
+            // Execute the command
+            boolean success = tool.execute(cmd, program);
+            
+            // Prepare response
+            Map<String, Object> resultData = new HashMap<>();
+            resultData.put("address", functionAddressStr);
+            resultData.put("functionName", function.getName());
+            
+            if (success) {
+                // Get updated function details after command execution
+                Function updatedFunction = program.getFunctionManager().getFunctionAt(functionAddress);
+                resultData.put("success", true);
+                resultData.put("message", "Successfully applied function data types");
+                resultData.put("function", getFunctionDetails(updatedFunction));
+                return createSuccessResponse(resultData);
+            } else {
+                // Command failed
+                String statusMsg = cmd.getStatusMsg();
+                resultData.put("success", false);
+                resultData.put("message", "Failed to apply function data types: " + 
+                    (statusMsg != null ? statusMsg : "Unknown error"));
+                return createErrorResponse(resultData.get("message").toString());
+            }
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error applying function data types", e);
+            return createErrorResponse("Error: " + e.getMessage());
+        }
+    }
 }

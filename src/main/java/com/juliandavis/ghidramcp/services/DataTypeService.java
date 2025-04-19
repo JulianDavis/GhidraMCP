@@ -78,7 +78,7 @@ public class DataTypeService implements Service {
             // Start transaction
             int txId = program.startTransaction("Create Primitive Data Type: " + dataTypeName);
             boolean success = false;
-            Data data = null;
+            Data data;
             try {
                 // Create the data
                 data = program.getListing().createData(address, dataType);
@@ -276,7 +276,7 @@ public class DataTypeService implements Service {
             // Start transaction
             int txId = program.startTransaction("Create String Data Type: " + stringType);
             boolean success = false;
-            Data data = null;
+            Data data;
             try {
                 // Create the data
                 data = program.getListing().createData(address, dataType);
@@ -347,7 +347,7 @@ public class DataTypeService implements Service {
             // Start transaction
             int txId = program.startTransaction("Create Array Data Type: " + elementTypeName);
             boolean success = false;
-            Data data = null;
+            Data data;
             try {
                 // Create the data
                 data = program.getListing().createData(address, arrayDataType);
@@ -449,6 +449,184 @@ public class DataTypeService implements Service {
             return createErrorResponse("Error creating structure: " + e.getMessage());
         }
     }
+    
+    /**
+     * Create a new structure data type in the program's data type manager with fields defined in a single operation
+     *
+     * @param structureName Name of the structure to create
+     * @param description   Optional description of the structure
+     * @param packed        Whether the structure should be packed (no alignment)
+     * @param alignment     Alignment value (e.g., 1, 2, 4, 8)
+     * @param fields        List of field definitions to add to the structure
+     * @return Map containing the result of the operation
+     */
+    public Map<String, Object> createStructureDataTypeWithFields(
+            String structureName,
+            String description,
+            boolean packed,
+            int alignment,
+            java.util.List<Map<String, Object>> fields) {
+
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+
+        // Start a transaction
+        int transactionID = program.startTransaction("Create Structure Data Type with Fields");
+
+        try {
+            // Check if the structure already exists
+            DataTypeManager dataTypeManager = program.getDataTypeManager();
+            DataType existingType = findDataType(structureName);
+            if (existingType != null) {
+                program.endTransaction(transactionID, false); // End transaction with rollback
+                return createErrorResponse("Structure already exists: " + structureName);
+            }
+
+            // Create the structure
+            StructureDataType structureDataType = new StructureDataType(
+                    CategoryPath.ROOT,
+                    structureName,
+                    0,
+                    dataTypeManager);
+
+            if (description != null && !description.isEmpty()) {
+                structureDataType.setDescription(description);
+            }
+
+            if (packed) {
+                structureDataType.setPackingEnabled(true);
+            }
+
+            if (alignment > 0) {
+                structureDataType.setExplicitMinimumAlignment(alignment);
+            }
+
+            // Add the structure to the data type manager
+            Structure addedStructure = (Structure) dataTypeManager.addDataType(
+                    structureDataType,
+                    DataTypeConflictHandler.DEFAULT_HANDLER);
+            
+            // Add fields to the structure
+            List<Map<String, Object>> fieldResults = new ArrayList<>();
+            boolean allFieldsAdded = true;
+            
+            for (Map<String, Object> field : fields) {
+                // Extract field information
+                String fieldName = (String) field.get("name");
+                String fieldType = (String) field.get("type");
+                String comment = (String) field.get("comment");
+                
+                // Default to appending to end if offset not specified
+                Integer offset = null;
+                if (field.containsKey("offset")) {
+                    Object offsetObj = field.get("offset");
+                    if (offsetObj instanceof Number) {
+                        offset = ((Number) offsetObj).intValue();
+                    } else if (offsetObj instanceof String) {
+                        try {
+                            offset = Integer.parseInt((String) offsetObj);
+                        } catch (NumberFormatException e) {
+                            Msg.warn(this, "Invalid offset for field '" + fieldName + "': " + offsetObj);
+                        }
+                    }
+                }
+                
+                // Skip this field if missing required info
+                if (fieldName == null || fieldType == null) {
+                    Msg.warn(this, "Skipping field with missing name or type: " + field);
+                    continue;
+                }
+                
+                // Find the data type for this field
+                DataType fieldDataType = findDataType(fieldType);
+                if (fieldDataType == null) {
+                    Msg.warn(this, "Field data type not found: " + fieldType);
+                    Map<String, Object> fieldResult = new HashMap<>();
+                    fieldResult.put("name", fieldName);
+                    fieldResult.put("success", false);
+                    fieldResult.put("error", "Field data type not found: " + fieldType);
+                    fieldResults.add(fieldResult);
+                    allFieldsAdded = false;
+                    continue;
+                }
+                
+                try {
+                    // Add the field to the structure
+                    DataTypeComponent component;
+                    
+                    if (offset != null) {
+                        // Use specified offset
+                        try {
+                            component = addedStructure.insertAtOffset(offset, fieldDataType, fieldDataType.getLength(), fieldName, comment);
+                        } catch (IllegalArgumentException e) {
+                            // If offset causes overlap, try to grow structure and add at end
+                            int currentLength = addedStructure.getLength();
+                            addedStructure.growStructure(fieldDataType.getLength());
+                            component = addedStructure.insertAtOffset(currentLength, fieldDataType, fieldDataType.getLength(), fieldName, comment);
+                        }
+                    } else {
+                        // Add to end
+                        component = addedStructure.add(fieldDataType, fieldName, comment);
+                    }
+                    
+                    // Create result for this field
+                    Map<String, Object> fieldResult = new HashMap<>();
+                    fieldResult.put("name", fieldName);
+                    fieldResult.put("type", fieldType);
+                    fieldResult.put("success", true);
+                    fieldResult.put("offset", component.getOffset());
+                    fieldResult.put("length", component.getLength());
+                    fieldResult.put("ordinal", component.getOrdinal());
+                    fieldResults.add(fieldResult);
+                    
+                } catch (Exception e) {
+                    Msg.error(this, "Failed to add field '" + fieldName + "' to structure", e);
+                    Map<String, Object> fieldResult = new HashMap<>();
+                    fieldResult.put("name", fieldName);
+                    fieldResult.put("success", false);
+                    fieldResult.put("error", e.getMessage());
+                    fieldResults.add(fieldResult);
+                    allFieldsAdded = false;
+                }
+            }
+            
+            // Get structure info for response
+            Map<String, Object> structureInfo = new HashMap<>();
+            structureInfo.put("name", addedStructure.getName());
+            
+            // Safely handle nullable UniversalID
+            if (addedStructure.getUniversalID() != null) {
+                structureInfo.put("id", addedStructure.getUniversalID().getValue());
+            } else {
+                structureInfo.put("id", null);
+            }
+            
+            structureInfo.put("category", addedStructure.getCategoryPath().getPath());
+            structureInfo.put("size", addedStructure.getLength());
+            structureInfo.put("alignment", addedStructure.getAlignment());
+            structureInfo.put("packed", addedStructure.isPackingEnabled());
+            structureInfo.put("fieldCount", addedStructure.getNumComponents());
+            structureInfo.put("fields", fieldResults);
+            structureInfo.put("allFieldsAdded", allFieldsAdded);
+            
+            if (addedStructure.getDescription() != null) {
+                structureInfo.put("description", addedStructure.getDescription());
+            }
+            
+            // End transaction with commit
+            program.endTransaction(transactionID, true);
+            
+            // Return success response
+            return createSuccessResponse(structureInfo);
+            
+        } catch (Exception e) {
+            // End transaction with rollback in case of error
+            program.endTransaction(transactionID, false);
+            Msg.error(this, "Error creating structure data type with fields", e);
+            return createErrorResponse("Error creating structure: " + e.getMessage());
+        }
+    }
 
     private Map<String, Object> getStructureInfoMap(Structure structure) {
         // Create data for the success response
@@ -499,7 +677,7 @@ public class DataTypeService implements Service {
         int transactionID = -1; // Initialize transaction ID
         boolean success = false; // Flag to track success for commit/rollback
         DataTypeComponent component = null; // Declare component here for scope
-        Structure structure = null; // Declare structure here for scope
+        Structure structure; // Declare structure here for scope
 
         try {
             // Find structure and field type *before* starting transaction
@@ -547,7 +725,6 @@ public class DataTypeService implements Service {
             }
 
             // Find the added component
-            // component declared earlier
             for (int i = 0; i < structure.getNumComponents(); i++) {
                 DataTypeComponent comp = structure.getComponent(i);
                 if (comp.getFieldName() != null && comp.getFieldName().equals(fieldName)) {
@@ -609,7 +786,7 @@ public class DataTypeService implements Service {
 
         int transactionID = -1; // Initialize transaction ID
         boolean success = false; // Flag for commit/rollback
-        Data data = null; // Declare data here for scope
+        Data data; // Declare data here for scope
 
         try {
             // Perform checks *before* starting transaction
@@ -909,7 +1086,10 @@ public class DataTypeService implements Service {
 
         int transactionID = -1; // Initialize transaction ID
         boolean success = false; // Flag for commit/rollback
-        EnumDataType addedEnum = null; // Declare here for scope
+        // Change to use the Enum interface instead of specific implementation class
+        Enum addedEnumResult; // Declare here for scope
+        // Keep addedEnum for backward compatibility with existing code
+        EnumDataType addedEnum = null; // Will be unused but kept for minimal change
 
         try {
             // Perform checks *before* starting transaction
@@ -943,29 +1123,35 @@ public class DataTypeService implements Service {
             }
 
             // Add the enum to the data type manager within the transaction
-            addedEnum = (EnumDataType) dataTypeManager.addDataType(
+            // Cast to Enum interface instead of EnumDataType to handle EnumDB and other implementations
+            addedEnumResult = (Enum) dataTypeManager.addDataType(
                     enumDataType,
                     DataTypeConflictHandler.DEFAULT_HANDLER);
-            if (addedEnum == null) {
+            if (addedEnumResult == null) {
                  throw new Exception("dataTypeManager.addDataType returned null for Enum");
             }
-
-            // Create data for the success response
+            
+            // Create data for the success response using the correctly typed addedEnumResult
             Map<String, Object> responseData = new HashMap<>();
-            responseData.put("name", addedEnum.getName());
-            responseData.put("id", addedEnum.getUniversalID().getValue());
-            responseData.put("category", addedEnum.getCategoryPath().getPath());
-            responseData.put("valueSize", addedEnum.getLength());
-            responseData.put("valueCount", addedEnum.getCount());
+            responseData.put("name", addedEnumResult.getName());
+            // Safely handle UniversalID which might be null
+            if (addedEnumResult.getUniversalID() != null) {
+                responseData.put("id", addedEnumResult.getUniversalID().getValue());
+            } else {
+                responseData.put("id", null);
+            }
+            responseData.put("category", addedEnumResult.getCategoryPath().getPath());
+            responseData.put("valueSize", addedEnumResult.getLength());
+            responseData.put("valueCount", addedEnumResult.getCount());
 
-            if (addedEnum.getDescription() != null) {
-                responseData.put("description", addedEnum.getDescription());
+            if (addedEnumResult.getDescription() != null) {
+                responseData.put("description", addedEnumResult.getDescription());
             }
 
             // Include enum values
             Map<String, Long> enumValues = new HashMap<>();
-            for (String name : addedEnum.getNames()) {
-                enumValues.put(name, addedEnum.getValue(name));
+            for (String name : addedEnumResult.getNames()) {
+                enumValues.put(name, addedEnumResult.getValue(name));
             }
             responseData.put("values", enumValues);
 
@@ -1004,7 +1190,7 @@ public class DataTypeService implements Service {
 
         int transactionID = -1; // Initialize transaction ID
         boolean success = false; // Flag for commit/rollback
-        Data data = null; // Declare data here for scope
+        Data data; // Declare data here for scope
 
         try {
             // Perform checks *before* starting transaction
@@ -1137,6 +1323,106 @@ public class DataTypeService implements Service {
         return subcategories;
     }
 
+    /**
+     * Rename a field within a structure
+     *
+     * @param structureName Name of the structure containing the field
+     * @param oldFieldName  Current name of the field to rename
+     * @param newFieldName  New name for the field
+     * @return Map containing the result of the operation
+     */
+    public Map<String, Object> renameStructureField(
+            String structureName,
+            String oldFieldName,
+            String newFieldName) {
+
+        if (program == null) {
+            return createErrorResponse("No program loaded");
+        }
+
+        // Find the structure before starting transaction
+        DataType structureType = findDataType(structureName);
+        if (structureType == null) {
+            return createErrorResponse("Structure not found: " + structureName);
+        }
+
+        if (!(structureType instanceof Structure structure)) {
+            return createErrorResponse("Data type is not a structure: " + structureName);
+        }
+
+        // Find the field to rename
+        DataTypeComponent component = null;
+        for (int i = 0; i < structure.getNumComponents(); i++) {
+            DataTypeComponent comp = structure.getComponent(i);
+            if (comp.getFieldName() != null && comp.getFieldName().equals(oldFieldName)) {
+                component = comp;
+                break;
+            }
+        }
+        
+        if (component == null) {
+            return createErrorResponse("Field '" + oldFieldName + "' not found in structure '" + structureName + "'");
+        }
+        
+        // Validate the new field name
+        if (newFieldName == null || newFieldName.isEmpty()) {
+            return createErrorResponse("New field name cannot be empty");
+        }
+        
+        // Check if there's already a field with the new name
+        for (int i = 0; i < structure.getNumComponents(); i++) {
+            DataTypeComponent comp = structure.getComponent(i);
+            if (comp != component && comp.getFieldName() != null && comp.getFieldName().equals(newFieldName)) {
+                return createErrorResponse("Field name '" + newFieldName + "' already exists in structure '" + structureName + "'");
+            }
+        }
+        
+        // Start a transaction to perform the rename
+        int transactionID = program.startTransaction("Rename structure field: " + oldFieldName + " to " + newFieldName);
+        boolean success = false;
+        
+        try {
+            // Gather information about the component for later use in result
+            int ordinal = component.getOrdinal();
+            int offset = component.getOffset();
+            int length = component.getLength();
+            DataType fieldType = component.getDataType();
+            String comment = component.getComment();
+            
+            // Use the undocumented method to modify a component - rename requires replacing the component
+            // Note: This uses the low-level Structure API
+            structure.delete(ordinal); // Remove at ordinal
+            structure.insertAtOffset(offset, fieldType, length, newFieldName, comment); // Re-add with new name
+            
+            // Mark success - if we reach here, the rename worked
+            success = true;
+            
+            // Create result data with field information
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("structureName", structureName);
+            responseData.put("oldFieldName", oldFieldName);
+            responseData.put("newFieldName", newFieldName);
+            responseData.put("ordinal", ordinal);
+            responseData.put("offset", offset);
+            responseData.put("dataType", fieldType.getName());
+            responseData.put("length", length);
+            
+            if (comment != null) {
+                responseData.put("comment", comment);
+            }
+            
+            // Return success response
+            return createSuccessResponse(responseData);
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error renaming structure field", e);
+            return createErrorResponse("Error renaming structure field: " + e.getMessage());
+        } finally {
+            // Ensure transaction is always ended
+            program.endTransaction(transactionID, success);
+        }
+    }
+    
     private Map<String, Object> getCategoryDataTypeInfoMap(DataType dt) {
         Map<String, Object> dataTypeInfo = new HashMap<>();
         dataTypeInfo.put("name", dt.getName());

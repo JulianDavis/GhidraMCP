@@ -943,6 +943,41 @@ def set_variable_data_type(function_name: str, variable_name: str, data_type_nam
         return ErrorResult.from_string(f"Unexpected response type: {str(response)}").error
 
 
+@mcp.tool()
+def fill_out_structure(function_address: str, variable_identifier: str) -> Dict[str, Any]:
+    """
+    Leverage Ghidra's analysis to automatically populate structure fields based on usage
+    within a specific function context.
+
+    Args:
+        function_address: The address of the function containing the variable/parameter.
+        variable_identifier: The name of the local variable or parameter (e.g., "param_1", "local_var_8").
+
+    Returns:
+        Dictionary with success status and message.
+    """
+    logger.info(f"Attempting to fill out structure for variable '{variable_identifier}' in function at {function_address}")
+    response = safe_post("/decompiler/fillOutStructure", {
+        "functionAddress": function_address,
+        "variableIdentifier": variable_identifier
+    })
+
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            logger.info(f"Successfully filled out structure: {response.get('data', {}).get('message', 'No message')}")
+            return response.get("data", {})
+        elif "status" in response and response.get("status") == "error":
+             logger.error(f"Error filling out structure: {response.get('error', {}).get('message', 'Unknown error')}")
+             return response # Return the full error dict
+        else:
+             logger.warning(f"Received non-standard response for fill_out_structure: {response}")
+             return response # Return as-is if format is unexpected
+    else:
+        logger.error(f"Received non-dict response for fill_out_structure: {response}")
+        return ErrorResult.from_string(f"Unexpected response type: {str(response)}").error
+
+
 
 @mcp.tool()
 def list_segments(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -1408,7 +1443,7 @@ def get_complete_symbol_stats(symbol_type: str = None) -> Dict[str, Any]:
 # ----------------------------------------------------------------------------------
 
 @mcp.tool()
-def create_structure_data_type(name: str, description: str = None, packed: bool = False, alignment: int = 0) -> Dict[str, Any]:
+def create_structure_data_type(name: str, description: str = None, packed: bool = False, alignment: int = 0, fields: List[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Create a new structure data type in the program's data type manager.
 
@@ -1417,6 +1452,11 @@ def create_structure_data_type(name: str, description: str = None, packed: bool 
         description: Optional description of the structure
         packed: Whether the structure should be packed (no alignment)
         alignment: Alignment value (e.g., 1, 2, 4, 8)
+        fields: Optional list of field definitions. Each field should be a dict with:
+            - name: Field name (required)
+            - type: Field data type name (required)
+            - comment: Optional field comment
+            - offset: Optional byte offset for the field (if unspecified, field is appended)
 
     Returns:
         Dictionary containing the result of the operation
@@ -1444,7 +1484,13 @@ def create_structure_data_type(name: str, description: str = None, packed: bool 
     if alignment > 0:
         params["alignment"] = alignment  # Send as int, let JSON serializer handle it
 
-    logger.info(f"Creating structure '{name}' with params: {params}")
+    # Add fields if specified
+    if fields is not None and len(fields) > 0:
+        params["fields"] = fields
+        logger.info(f"Creating structure '{name}' with {len(fields)} fields")
+    else:
+        logger.info(f"Creating structure '{name}' with params: {params}")
+
     response = safe_post("dataTypes/createStructure", params)
 
     if isinstance(response, dict):
@@ -1709,6 +1755,46 @@ def create_enum_data_type(name: str, value_size: int = 4, values: Dict[str, int]
         params["values"] = values_str
 
     response = safe_post("dataTypes/createEnum", params)
+
+    if isinstance(response, dict):
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            return response.get("data", {})
+        return response
+    else:
+        return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def rename_structure_field(structure_name: str, old_field_name: str, new_field_name: str) -> Dict[str, Any]:
+    """
+    Rename a field within an existing structure data type.
+
+    Args:
+        structure_name: Name of the structure containing the field
+        old_field_name: Current name of the field to rename
+        new_field_name: New name for the field
+
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    if not structure_name or not old_field_name or not new_field_name:
+        logger.error("All parameters (structure_name, old_field_name, new_field_name) are required")
+        return {
+            "status": "error",
+            "error": {
+                "message": "Missing required parameters: structure_name, old_field_name, new_field_name",
+                "code": 400
+            }
+        }
+
+    # Build parameters
+    params = {
+        "structureName": structure_name,
+        "oldFieldName": old_field_name,
+        "newFieldName": new_field_name
+    }
+
+    logger.info(f"Renaming field '{old_field_name}' to '{new_field_name}' in structure '{structure_name}'")
+    response = safe_post("dataTypes/renameStructureField", params)
 
     if isinstance(response, dict):
         if "status" in response and response.get("status") == "success" and "data" in response:
@@ -2180,6 +2266,91 @@ def convert_number(text: str, size: int = None) -> Dict[str, Any]:
     else:
         # Convert string response to dict for consistency
         return ErrorResult.from_dict(response)
+
+@mcp.tool()
+def apply_function_data_types(function_address: str, always_replace: bool = True, create_bookmarks: bool = True) -> Dict[str, Any]:
+    """
+    Automatically propagate defined types to function signatures based on analysis.
+    
+    Uses Ghidra's ApplyFunctionDataTypesCmd to analyze function names and match them
+    with function signature data types in the data type manager.
+    
+    Args:
+        function_address: The address of the function to analyze (e.g., "0x1400")
+        always_replace: Whether to always replace existing function signatures (default: True)
+        create_bookmarks: Whether to create bookmarks when a function signature is applied (default: True)
+        
+    Returns:
+        Dictionary containing the result of the operation:
+        - success: Whether the operation succeeded
+        - message: Status message
+        - function: Dictionary with details of the updated function
+    """
+    logger.info(f"Applying function data types to function at address: {function_address}")
+    
+    response = safe_post("apply_function_data_types", {
+        "function_address": function_address,
+        "always_replace": str(always_replace).lower(),
+        "create_bookmarks": str(create_bookmarks).lower()
+    })
+    
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            logger.info(f"Successfully applied function data types: {response.get('data', {}).get('message', 'No message')}")
+            return response.get("data", {})
+        elif "status" in response and response.get("status") == "error":
+            logger.error(f"Error applying function data types: {response.get('error', {}).get('message', 'Unknown error')}")
+            return response # Return the full error dict
+        else:
+            logger.warning(f"Received non-standard response for apply_function_data_types: {response}")
+            return response # Return as-is if format is unexpected
+    else:
+        logger.error(f"Received non-dict response for apply_function_data_types: {response}")
+        return ErrorResult.from_string(f"Unexpected response type: {str(response)}").error
+        
+@mcp.tool()
+def create_namespace(path: str, source: str = "USER_DEFINED") -> Dict[str, Any]:
+    """
+    Create a namespace hierarchy based on the provided path string.
+    
+    This tool uses Ghidra's CreateNamespacesCmd to create a namespace hierarchy. The path
+    can be absolute (starting with "global::") or relative to the global namespace.
+    
+    Args:
+        path: The path string for the namespace (e.g., "global::ns1::ns2" or "ns1::ns2")
+        source: The source type for the namespace (default: USER_DEFINED)
+               Valid values: "ANALYSIS", "IMPORTED", "USER_DEFINED", "DEFAULT"
+    
+    Returns:
+        Dictionary containing the result of the operation, including:
+        - success: Boolean indicating success
+        - namespace: The name of the created namespace
+        - path: The path that was used to create the namespace
+        - id: The ID of the namespace in Ghidra
+        - message: Status message
+    """
+    logger.info(f"Creating namespace with path: {path}, source: {source}")
+    
+    response = safe_post("namespace/create", {
+        "path": path,
+        "source": source
+    })
+    
+    if isinstance(response, dict):
+        # Check for standardized response format
+        if "status" in response and response.get("status") == "success" and "data" in response:
+            logger.info(f"Successfully created namespace: {path}")
+            return response.get("data", {})
+        elif "status" in response and response.get("status") == "error":
+            logger.error(f"Error creating namespace: {response.get('error', {}).get('message', 'Unknown error')}")
+            return response  # Return the full error dict
+        else:
+            logger.warning(f"Received non-standard response for create_namespace: {response}")
+            return response  # Return as-is if format is unexpected
+    else:
+        logger.error(f"Received non-dict response for create_namespace: {response}")
+        return ErrorResult.from_string(f"Unexpected response type: {str(response)}").error
 
 @mcp.tool()
 def set_comment(address: str, comment: str, comment_type: int = 3) -> Dict[str, Any]:

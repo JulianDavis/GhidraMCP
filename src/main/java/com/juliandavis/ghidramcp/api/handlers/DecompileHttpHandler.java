@@ -51,7 +51,8 @@ public class DecompileHttpHandler extends BaseHttpHandler {
         server.createContext("/renameFunction", this::handleRenameFunction);
         server.createContext("/renameData", this::handleRenameData);
         server.createContext("/decompiler/renameVariable", this::handleRenameVariable);
-        server.createContext("/decompiler/setVariableDataType", this::handleSetVariableDataType); // Register new endpoint
+        server.createContext("/decompiler/setVariableDataType", this::handleSetVariableDataType); // Register endpoint
+        server.createContext("/decompiler/fillOutStructure", this::handleFillOutStructure); // Register new endpoint
 
         Msg.info(this, "Registered Decompile endpoints");
     }
@@ -381,6 +382,52 @@ public class DecompileHttpHandler extends BaseHttpHandler {
         }
 
         Map<String, Object> result = service.setVariableDataType(functionName, variableName, dataTypeName);
+        sendJsonResponse(exchange, result);
+    }
+
+    /**
+     * Handle fill out structure request.
+     */
+    private void handleFillOutStructure(HttpExchange exchange) throws IOException {
+        if (!isPostRequest(exchange)) {
+            sendMethodNotAllowedResponse(exchange);
+            return;
+        }
+
+        // Expect JSON request body
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        Map<String, Object> params;
+
+        if (contentType != null && contentType.contains("application/json")) {
+            params = parseJsonRequest(exchange);
+        } else {
+            sendErrorResponse(exchange, "Content-Type must be application/json");
+            return;
+        }
+
+        // Get parameters from JSON
+        String functionAddress = (String) params.get("functionAddress");
+        String variableIdentifier = (String) params.get("variableIdentifier");
+
+        // Validate parameters
+        if (functionAddress == null || functionAddress.isEmpty()) {
+            sendErrorResponse(exchange, "Function address (functionAddress) is required");
+            return;
+        }
+
+        if (variableIdentifier == null || variableIdentifier.isEmpty()) {
+            sendErrorResponse(exchange, "Variable identifier (variableIdentifier) is required");
+            return;
+        }
+
+        // Call the service method
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.fillOutStructure(functionAddress, variableIdentifier);
         sendJsonResponse(exchange, result);
     }
 }

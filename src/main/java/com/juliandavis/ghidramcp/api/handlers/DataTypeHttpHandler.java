@@ -52,6 +52,7 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
         server.createContext("/dataTypes/createArray", this::handleCreateArrayDataType);
         server.createContext("/dataTypes/createStructure", this::handleCreateStructureDataType);
         server.createContext("/dataTypes/addFieldToStructure", this::handleAddFieldToStructure);
+        server.createContext("/dataTypes/renameStructureField", this::handleRenameStructureField);
         server.createContext("/dataTypes/applyStructure", this::handleApplyStructureToMemory);
         server.createContext("/dataTypes/createEnum", this::handleCreateEnumDataType);
         server.createContext("/dataTypes/applyEnum", this::handleApplyEnumToMemory);
@@ -207,16 +208,17 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
 
         // Check content-type header
         String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
-        Map<String, String> params;
+        Map<String, Object> jsonParams = null;
+        Map<String, String> params = null;
 
         if (contentType != null && contentType.toLowerCase().contains("json")) {
             // Parse as JSON
-            Map<String, Object> jsonParams = parseJsonRequest(exchange);
+            jsonParams = parseJsonRequest(exchange);
 
-            // Convert to string params
+            // Convert to string params for basic properties
             params = new HashMap<>();
             for (Map.Entry<String, Object> entry : jsonParams.entrySet()) {
-                if (entry.getValue() != null) {
+                if (entry.getValue() != null && !(entry.getValue() instanceof java.util.List)) {
                     params.put(entry.getKey(), String.valueOf(entry.getValue()));
                 }
             }
@@ -225,7 +227,7 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             params = parsePostParams(exchange);
         }
 
-        // Extract parameters
+        // Extract basic parameters
         String name = params.get("name");
         String description = params.get("description");
         boolean packed = Boolean.parseBoolean(params.getOrDefault("packed", "false"));
@@ -249,7 +251,28 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
             return;
         }
-        Map<String, Object> result = service.createStructureDataType(name, description, packed, alignment);
+        
+        // Extract fields from JSON if available
+        java.util.List<Map<String, Object>> fields = null;
+        if (jsonParams != null && jsonParams.containsKey("fields")) {
+            Object fieldsObj = jsonParams.get("fields");
+            if (fieldsObj instanceof java.util.List) {
+                fields = (java.util.List<Map<String, Object>>) fieldsObj;
+                Msg.debug(this, "Found " + fields.size() + " fields in request");
+            }
+        }
+        
+        // Create structure and then add fields if specified
+        Map<String, Object> result;
+        
+        if (fields == null || fields.isEmpty()) {
+            // Simple creation without fields
+            result = service.createStructureDataType(name, description, packed, alignment);
+        } else {
+            // Create structure with fields
+            result = service.createStructureDataTypeWithFields(name, description, packed, alignment, fields);
+        }
+        
         sendJsonResponse(exchange, result);
     }
 
@@ -474,6 +497,61 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
         Map<String, Object> result = service.deleteDataType(name);
         sendJsonResponse(exchange, result);
     }
+    
+    /**
+     * Handle rename structure field request.
+     */
+    private void handleRenameStructureField(HttpExchange exchange) throws IOException {
+        if (!isPostRequest(exchange)) {
+            sendMethodNotAllowedResponse(exchange);
+            return;
+        }
 
-    // These methods are now provided by BaseHttpHandler, so we don't need to reimplement them
+        // Check content-type header for JSON support
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        Map<String, String> params;
+
+        if (contentType != null && contentType.toLowerCase().contains("json")) {
+            // Parse as JSON
+            Map<String, Object> jsonParams = parseJsonRequest(exchange);
+
+            // Convert to string params
+            params = new HashMap<>();
+            for (Map.Entry<String, Object> entry : jsonParams.entrySet()) {
+                if (entry.getValue() != null) {
+                    params.put(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+            }
+        } else {
+            // Parse as form data (the traditional way)
+            params = parsePostParams(exchange);
+        }
+
+        // Extract parameters
+        String structureName = params.get("structureName");
+        String oldFieldName = params.get("oldFieldName");
+        String newFieldName = params.get("newFieldName");
+
+        // Debug log the parameters
+        Msg.debug(this, "renameStructureField parameters: structureName=" + structureName +
+                 ", oldFieldName=" + oldFieldName +
+                 ", newFieldName=" + newFieldName);
+
+        // Validate required parameters
+        if (structureName == null || oldFieldName == null || newFieldName == null) {
+            sendErrorResponse(exchange, "Missing required parameters: structureName, oldFieldName, newFieldName");
+            return;
+        }
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        
+        // Call the service method to rename the field
+        Map<String, Object> result = service.renameStructureField(structureName, oldFieldName, newFieldName);
+        sendJsonResponse(exchange, result);
+    }
 }

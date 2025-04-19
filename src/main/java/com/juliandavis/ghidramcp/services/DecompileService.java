@@ -17,10 +17,17 @@ import ghidra.util.task.ConsoleTaskMonitor;
 
 import java.util.*;
 import ghidra.app.cmd.function.SetVariableDataTypeCmd;
+import ghidra.app.decompiler.DecompileOptions; // Added import
+import ghidra.app.decompiler.component.DecompilerUtils; // Added import
+import ghidra.app.decompiler.util.FillOutStructureCmd; // Added import
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.listing.FunctionManager;
+import ghidra.program.model.listing.Parameter; // Added import
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.DataTypeConflictHandler;
+import ghidra.program.util.ProgramLocation; // Added import
+import ghidra.program.util.VariableLocation; // Added import
+
 
 /**
  * Service for decompiling code and managing functions in Ghidra.
@@ -690,6 +697,78 @@ public class DecompileService implements Service {
         } else {
             Msg.error(this, "Failed to execute SetVariableDataTypeCmd for variable '" + variableName + "': " + message);
             return ResponseUtil.createErrorResponse("Failed to set data type for variable '" + variableName + "': " + message);
+        }
+    }
+
+    /**
+     * Automatically populates structure fields based on decompiler analysis for a given variable.
+     *
+     * @param functionAddressStr The address of the function containing the variable.
+     * @param variableIdentifier The name of the local variable or parameter.
+     * @return Map containing the result of the operation.
+     */
+    public Map<String, Object> fillOutStructure(String functionAddressStr, String variableIdentifier) {
+        if (program == null) {
+            return ResponseUtil.createErrorResponse("No program loaded");
+        }
+        if (tool == null) {
+            return ResponseUtil.createErrorResponse("PluginTool not available");
+        }
+        if (functionAddressStr == null || functionAddressStr.isEmpty()) {
+            return ResponseUtil.createErrorResponse("Function address is required");
+        }
+        if (variableIdentifier == null || variableIdentifier.isEmpty()) {
+            return ResponseUtil.createErrorResponse("Variable identifier is required");
+        }
+
+        try {
+            Address functionAddress = program.getAddressFactory().getAddress(functionAddressStr);
+            if (functionAddress == null) {
+                return ResponseUtil.createErrorResponse("Invalid function address: " + functionAddressStr);
+            }
+
+            Function function = program.getFunctionManager().getFunctionAt(functionAddress);
+            if (function == null) {
+                // Maybe it's an address within the function?
+                function = program.getFunctionManager().getFunctionContaining(functionAddress);
+                if (function == null) {
+                    return ResponseUtil.createErrorResponse("Function not found at or containing address: " + functionAddressStr);
+                }
+                 Msg.info(this, "Address " + functionAddressStr + " is within function " + function.getName() + ", using function entry point for context.");
+            }
+
+
+            Variable targetVariable = findVariableByName(function, variableIdentifier);
+            if (targetVariable == null) {
+                return ResponseUtil.createErrorResponse("Variable '" + variableIdentifier + "' not found in function '" + function.getName() + "'");
+            }
+
+            // Create the ProgramLocation for the command
+            ProgramLocation location = new VariableLocation(program, targetVariable, 0, 0);
+
+            // Get decompiler options
+            DecompileOptions options = DecompilerUtils.getDecompileOptions(tool, program);
+
+            // Create the command
+            FillOutStructureCmd cmd = new FillOutStructureCmd(location, options);
+
+            // Execute the command
+            boolean success = tool.execute(cmd, program);
+
+            if (success) {
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", true);
+                result.put("message", "FillOutStructureCmd executed successfully for variable '" + variableIdentifier + "' in function '" + function.getName() + "'. Check Ghidra for changes.");
+                result.put("function", function.getName());
+                result.put("variable", variableIdentifier);
+                return ResponseUtil.createSuccessResponse(result);
+            } else {
+                return ResponseUtil.createErrorResponse("FillOutStructureCmd failed to execute for variable '" + variableIdentifier + "'. Status: " + cmd.getStatusMsg());
+            }
+
+        } catch (Exception e) {
+            Msg.error(this, "Error executing FillOutStructureCmd for variable '" + variableIdentifier + "'", e);
+            return ResponseUtil.createErrorResponse("Error executing FillOutStructureCmd: " + e.getMessage());
         }
     }
 

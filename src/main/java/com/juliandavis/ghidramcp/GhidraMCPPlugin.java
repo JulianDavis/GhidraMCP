@@ -1,6 +1,7 @@
 package com.juliandavis.ghidramcp;
 
 import com.juliandavis.ghidramcp.services.initializers.*;
+import com.juliandavis.ghidramcp.services.initializers.NamespaceServiceInitializer;
 import com.juliandavis.ghidramcp.services.initializers.NumberConversionServiceInitializer;
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.plugin.ProgramPlugin;
@@ -122,9 +123,13 @@ public class GhidraMCPPlugin extends ProgramPlugin {
         FunctionPrototypeServiceInitializer functionPrototypeInitializer = new FunctionPrototypeServiceInitializer(this, serviceRegistry, endpointRegistry);
         functionPrototypeInitializer.initialize();
 
-        // Memory Manipulation services (NEW)
+        // Memory Manipulation services
         MemoryManipulationServiceInitializer memoryManipulationInitializer = new MemoryManipulationServiceInitializer(this, serviceRegistry, endpointRegistry);
         memoryManipulationInitializer.initialize();
+        
+        // Namespace services
+        NamespaceServiceInitializer namespaceServiceInitializer = new NamespaceServiceInitializer(this, serviceRegistry, endpointRegistry);
+        namespaceServiceInitializer.initialize();
     }
 
     private void startServer() {

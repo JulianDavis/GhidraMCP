@@ -49,6 +49,7 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
 
         // Register endpoints
         server.createContext("/set_function_prototype", this::handleSetFunctionPrototype);
+        server.createContext("/apply_function_data_types", this::handleApplyFunctionDataTypes);
 
         Msg.info(this, "Registered Function Prototype endpoints");
     }
@@ -122,6 +123,45 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
         }
         Map<String, Object> result = service.setFunctionPrototype(
                 functionName, returnType, parameterDefinitions, callingConvention, renameOptionStr);
+
+        sendJsonResponse(exchange, result);
+    }
+
+    /**
+     * Handle apply function data types request.
+     */
+    private void handleApplyFunctionDataTypes(HttpExchange exchange) throws IOException {
+        if (!isPostRequest(exchange)) {
+            sendMethodNotAllowedResponse(exchange);
+            return;
+        }
+
+        // Parse JSON request body
+        Map<String, Object> params = parseJsonRequest(exchange);
+
+        // Extract required parameters
+        String functionAddress = (String) params.get("function_address");
+        
+        // Extract optional parameters with defaults
+        boolean alwaysReplace = Boolean.parseBoolean(String.valueOf(params.getOrDefault("always_replace", "true")));
+        boolean createBookmarks = Boolean.parseBoolean(String.valueOf(params.getOrDefault("create_bookmarks", "true")));
+
+        // Validate required parameters
+        if (functionAddress == null || functionAddress.isEmpty()) {
+            sendErrorResponse(exchange, "Function address is required");
+            return;
+        }
+
+        // Retrieve service instance
+        FunctionPrototypeService service = getService(FunctionPrototypeService.SERVICE_NAME, FunctionPrototypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, FunctionPrototypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        
+        // Call the service to apply function data types
+        Map<String, Object> result = service.applyFunctionDataTypes(
+                functionAddress, alwaysReplace, createBookmarks);
 
         sendJsonResponse(exchange, result);
     }

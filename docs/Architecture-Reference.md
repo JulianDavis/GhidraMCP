@@ -1,6 +1,7 @@
 # GhidraMCP Architecture Reference
 
 This document provides a comprehensive reference for the GhidraMCP plugin architecture, covering the component hierarchy, package structure, class responsibilities, and dependency relationships.
+This document is probably out of date and inaccurate after the refactor.
 
 ## Architectural Overview
 
