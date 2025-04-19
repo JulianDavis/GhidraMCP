@@ -102,6 +102,9 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
             }
         }
 
+        // Extract is_variadic flag (defaults to false if not provided)
+        boolean isVariadic = Boolean.parseBoolean(String.valueOf(params.getOrDefault("is_variadic", "false")));
+        
         // Validate required parameters
         if (functionName == null || functionName.isEmpty()) {
             sendErrorResponse(exchange, "Function name is required");
@@ -114,7 +117,6 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
         }
 
         // Call the service to set the function prototype
-        // Call the service (updateTypeStr removed)
         // Retrieve service instance
         FunctionPrototypeService service = getService(FunctionPrototypeService.SERVICE_NAME, FunctionPrototypeService.class);
         if (service == null) {
@@ -122,7 +124,7 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
             return;
         }
         Map<String, Object> result = service.setFunctionPrototype(
-                functionName, returnType, parameterDefinitions, callingConvention, renameOptionStr);
+                functionName, returnType, parameterDefinitions, callingConvention, renameOptionStr, isVariadic);
 
         sendJsonResponse(exchange, result);
     }

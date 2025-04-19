@@ -1336,7 +1336,8 @@ def get_complete_function_stats() -> Dict[str, Any]:
 
 @mcp.tool()
 def set_function_prototype(function_name: str, return_type: str, parameters: List[Dict[str, str]],
-                           calling_convention: str = None, rename_option: str = "RENAME_IF_DEFAULT") -> Dict[str, Any]: # REMOVED update_type
+                           calling_convention: str = None, rename_option: str = "RENAME_IF_DEFAULT", 
+                           is_variadic: bool = False) -> Dict[str, Any]:
     """
     Set a function prototype (signature) for a function.
 
@@ -1346,6 +1347,7 @@ def set_function_prototype(function_name: str, return_type: str, parameters: Lis
         parameters: List of parameter definitions (name, type, and optional storage string pairs)
         calling_convention: Optional calling convention (can be null to keep existing)
         rename_option: Controls function renaming ("RENAME", "RENAME_IF_DEFAULT", "NO_CHANGE"). Defaults to RENAME_IF_DEFAULT.
+        is_variadic: Whether the function accepts a variable number of arguments (e.g., printf-style functions). Defaults to False.
 
     Returns:
         Dictionary containing the result of the operation
@@ -1373,6 +1375,7 @@ def set_function_prototype(function_name: str, return_type: str, parameters: Lis
         "returnType": return_type,
         "parameters": parameters,  # Pass the list directly
         "rename_option": rename_option, # Use the new rename_option string
+        "is_variadic": str(is_variadic).lower()  # Convert to lowercase string "true" or "false"
     }
 
     # Add calling convention if specified

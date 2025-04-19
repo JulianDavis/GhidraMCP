@@ -74,12 +74,14 @@ public class FunctionPrototypeService implements Service {
             String returnType,
             List<Map<String, String>> parameterDefinitions,
             String callingConvention,
-            String renameOptionStr) {
+            String renameOptionStr,
+            boolean isVariadic) {
         Msg.info(this, "setFunctionPrototype called for: " + functionName);
         Msg.info(this, "  Return Type: " + returnType);
         Msg.info(this, "  Parameters: " + parameterDefinitions);
         Msg.info(this, "  Calling Convention: " + callingConvention);
         Msg.info(this, "  Rename Option: " + renameOptionStr);
+        Msg.info(this, "  Is Variadic: " + isVariadic);
 
         if (program == null || programArch == null) {
             return createErrorResponse("No program loaded or architecture not available");
@@ -144,9 +146,15 @@ public class FunctionPrototypeService implements Service {
                  Msg.info(this, "Prepared ParameterDefinition list (size " + params.size() + "): " + params);
                  FunctionDefinitionDataType newSignature = new FunctionDefinitionDataType(categoryPath, signatureName, dtm);
 
-                 // 3. Set Return Type, Parameters, and Calling Convention
+                 // 3. Set Return Type, Parameters, and Variadic flag
                  newSignature.setReturnType(returnDataType);
                  newSignature.setArguments(params.toArray(new ParameterDefinition[0])); // Use the full parameter list
+                 
+                 // Set variadic flag if specified
+                 if (isVariadic) {
+                     newSignature.setVarArgs(true);
+                     Msg.info(this, "Set function as variadic (has variable arguments)");
+                 }
 
                  // 3. Determine and *explicitly set* the calling convention on the new signature
                  String targetCallingConvention = callingConvention;
@@ -356,6 +364,7 @@ public class FunctionPrototypeService implements Service {
         details.put("returnType", function.getReturnType().getDisplayName()); // Use DisplayName
         details.put("parameterCount", function.getParameterCount());
         details.put("namespace", function.getParentNamespace().getName(true)); // Use true for full namespace
+        details.put("isVariadic", function.hasVarArgs()); // Add variadic flag
         if (function.getCallingConvention() != null) {
             details.put("callingConvention", function.getCallingConvention().getName());
         }

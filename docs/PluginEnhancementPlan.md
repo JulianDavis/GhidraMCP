@@ -66,4 +66,4 @@ This document outlines planned improvements for the Ghidra MCP bridge and backen
     *   **Goal:** Add explicit support for variadic functions.
     *   **Ghidra Cmd:** `ghidra.app.cmd.function.ApplyFunctionSignatureCmd` + `FunctionDefinition.setVarArgs(True)` on backend.
     *   **Details:** Add `is_variadic: bool = False` parameter. Update backend logic. (Deferring custom storage/`thiscall` improvements).
-    *   **Status:** Not started.
+    *   **Status:** Completed. Added `is_variadic` parameter to the Python bridge tool and modified the backend service and HTTP handler to set the variadic flag on the function definition when creating function prototypes. This enhancement enables proper prototyping of variadic functions like printf and scanf in C/C++.
