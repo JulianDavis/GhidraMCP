@@ -20,35 +20,25 @@ import ghidra.util.Msg;
  * This handler exposes endpoints for disassembling code and managing assembly-level operations.
  */
 public class DisassembleHttpHandler extends BaseHttpHandler {
-    
-    private final DisassembleService disassembleService;
-    
+
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final DisassembleService disassembleService; // Removed final field
+
     /**
      * Create a new DisassembleHttpHandler.
-     * 
+     *
      * @param plugin the GhidraMCPPlugin instance
      */
     public DisassembleHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        
+
         // Get or create the DisassembleService
-        disassembleService = getOrCreateDisassembleService();
+        // Constructor no longer initializes the service field
+        // disassembleService = getOrCreateDisassembleService();
     }
-    
-    private DisassembleService getOrCreateDisassembleService() {
-        // Try to get the existing service
-        DisassembleService service = ServiceRegistry.getInstance().getService(
-                DisassembleService.SERVICE_NAME, DisassembleService.class);
-        
-        // If it doesn't exist, create and register it
-        if (service == null) {
-            service = new DisassembleService();
-            ServiceRegistry.getInstance().registerService(service);
-        }
-        
-        return service;
-    }
-    
+
+    // Removed getOrCreateDisassembleService method - service retrieval happens in handlers
+
     @Override
     public void registerEndpoints() {
         HttpServer server = getServer();
@@ -56,15 +46,15 @@ public class DisassembleHttpHandler extends BaseHttpHandler {
             Msg.error(this, "Cannot register endpoints: server is null");
             return;
         }
-        
+
         // Register all endpoints
         server.createContext("/disassemble", this::handleDisassembleAtAddress);
         server.createContext("/disassembleFunction", this::handleDisassembleFunction);
         server.createContext("/setComment", this::handleSetComment);
-        
+
         Msg.info(this, "Registered Disassemble endpoints");
     }
-    
+
     /**
      * Handle disassemble at address request.
      */
@@ -73,27 +63,33 @@ public class DisassembleHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         // Parse parameters from the query string
         Map<String, String> params = parseQueryParams(exchange);
         String address = params.get("address");
         int length = parseIntOrDefault(params.get("length"), 10);  // Default to 10 instructions
-        
+
         // Validate parameters
         if (address == null || address.isEmpty()) {
             sendErrorResponse(exchange, "Address is required");
             return;
         }
-        
+
         if (length <= 0) {
             sendErrorResponse(exchange, "Instruction count must be positive");
             return;
         }
-        
-        Map<String, Object> result = disassembleService.getDisassemblyAtAddress(address, length);
+
+        // Retrieve service instance
+        DisassembleService service = getService(DisassembleService.SERVICE_NAME, DisassembleService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DisassembleService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.getDisassemblyAtAddress(address, length);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle disassemble function request.
      */
@@ -102,17 +98,23 @@ public class DisassembleHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         // Read the function name from the request body
         String name = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-        
+
         // Validate parameters
         if (name.isEmpty()) {
             sendErrorResponse(exchange, "Function name is required");
             return;
         }
-        
-        Map<String, Object> result = disassembleService.getDisassemblyForFunction(name);
+
+        // Retrieve service instance
+        DisassembleService service = getService(DisassembleService.SERVICE_NAME, DisassembleService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DisassembleService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.getDisassemblyForFunction(name);
         sendJsonResponse(exchange, result);
     }
 
@@ -180,7 +182,13 @@ public class DisassembleHttpHandler extends BaseHttpHandler {
             return;
         }
 
-        Map<String, Object> result = disassembleService.setCommentAtAddress(address, comment, commentType);
+        // Retrieve service instance
+        DisassembleService service = getService(DisassembleService.SERVICE_NAME, DisassembleService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DisassembleService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.setCommentAtAddress(address, comment, commentType);
         sendJsonResponse(exchange, result);
     }
 }

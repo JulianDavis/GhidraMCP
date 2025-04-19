@@ -11,7 +11,8 @@ import java.util.Map;
  */
 public class MemoryReadHttpHandler extends BaseHttpHandler {
 
-    private final MemoryReadService memoryReadService;
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final MemoryReadService memoryReadService; // Removed final field
 
     /**
      * Creates a new MemoryReadHttpHandler.
@@ -20,7 +21,8 @@ public class MemoryReadHttpHandler extends BaseHttpHandler {
      */
     public MemoryReadHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        this.memoryReadService = getOrCreateMemoryReadService();
+        // Constructor no longer initializes the service field
+        // this.memoryReadService = getOrCreateMemoryReadService();
     }
 
     /**
@@ -34,7 +36,13 @@ public class MemoryReadHttpHandler extends BaseHttpHandler {
             String address = params.get("address");
             int length = Integer.parseInt(params.getOrDefault("length", "16"));
 
-            Map<String, Object> response = memoryReadService.readMemory(address, length);
+            // Retrieve service instance
+            MemoryReadService service = getService(MemoryReadService.SERVICE_NAME, MemoryReadService.class);
+            if (service == null) {
+                sendErrorResponse(exchange, MemoryReadService.SERVICE_NAME + " not available.", 503);
+                return;
+            }
+            Map<String, Object> response = service.readMemory(address, length);
             sendJsonResponse(exchange, response);
         });
 
@@ -43,13 +51,25 @@ public class MemoryReadHttpHandler extends BaseHttpHandler {
             Map<String, String> params = parseQueryParams(exchange);
             String address = params.get("address");
 
-            Map<String, Object> response = memoryReadService.getMemoryBlockInfo(address);
+            // Retrieve service instance
+            MemoryReadService service = getService(MemoryReadService.SERVICE_NAME, MemoryReadService.class);
+             if (service == null) {
+                sendErrorResponse(exchange, MemoryReadService.SERVICE_NAME + " not available.", 503);
+                return;
+            }
+            Map<String, Object> response = service.getMemoryBlockInfo(address);
             sendJsonResponse(exchange, response);
         });
 
         // List all memory blocks
         getServer().createContext("/memory/listBlocks", exchange -> {
-            Map<String, Object> response = memoryReadService.listMemoryBlocks();
+            // Retrieve service instance
+            MemoryReadService service = getService(MemoryReadService.SERVICE_NAME, MemoryReadService.class);
+             if (service == null) {
+                sendErrorResponse(exchange, MemoryReadService.SERVICE_NAME + " not available.", 503);
+                return;
+            }
+            Map<String, Object> response = service.listMemoryBlocks();
             sendJsonResponse(exchange, response);
         });
 
@@ -58,29 +78,28 @@ public class MemoryReadHttpHandler extends BaseHttpHandler {
             Map<String, String> params = parseQueryParams(exchange);
             String address = params.get("address");
 
-            Map<String, Object> response = memoryReadService.isAddressValid(address);
+            // Retrieve service instance
+            MemoryReadService service = getService(MemoryReadService.SERVICE_NAME, MemoryReadService.class);
+             if (service == null) {
+                sendErrorResponse(exchange, MemoryReadService.SERVICE_NAME + " not available.", 503);
+                return;
+            }
+            Map<String, Object> response = service.isAddressValid(address);
             sendJsonResponse(exchange, response);
         });
 
         // Get address spaces
         getServer().createContext("/memory/addressSpaces", exchange -> {
-            Map<String, Object> response = memoryReadService.getAddressSpaces();
+            // Retrieve service instance
+            MemoryReadService service = getService(MemoryReadService.SERVICE_NAME, MemoryReadService.class);
+             if (service == null) {
+                sendErrorResponse(exchange, MemoryReadService.SERVICE_NAME + " not available.", 503);
+                return;
+            }
+            Map<String, Object> response = service.getAddressSpaces();
             sendJsonResponse(exchange, response);
         });
     }
 
-    /**
-     * Gets or creates the MemoryReadService instance.
-     *
-     * @return The MemoryReadService instance
-     */
-    private MemoryReadService getOrCreateMemoryReadService() {
-        MemoryReadService service = getService(MemoryReadService.SERVICE_NAME, MemoryReadService.class);
-        if (service == null) {
-            service = new MemoryReadService();
-            // Register the service with the service registry
-            plugin.getServiceRegistry().registerService(service);
-        }
-        return service;
-    }
+    // Removed getOrCreateMemoryReadService method - service retrieval happens in handlers
 }

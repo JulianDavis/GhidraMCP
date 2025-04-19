@@ -17,35 +17,25 @@ import ghidra.util.Msg;
  * This handler exposes endpoints for retrieving cross-references (xrefs) to and from addresses.
  */
 public class FunctionXrefHttpHandler extends BaseHttpHandler {
-    
-    private final FunctionXrefService functionXrefService;
-    
+
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final FunctionXrefService functionXrefService; // Removed final field
+
     /**
      * Create a new FunctionXrefHttpHandler.
-     * 
+     *
      * @param plugin the GhidraMCPPlugin instance
      */
     public FunctionXrefHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        
+
         // Get or create the FunctionXrefService
-        functionXrefService = getOrCreateFunctionXrefService();
+        // Constructor no longer initializes the service field
+        // functionXrefService = getOrCreateFunctionXrefService();
     }
-    
-    private FunctionXrefService getOrCreateFunctionXrefService() {
-        // Try to get the existing service
-        FunctionXrefService service = ServiceRegistry.getInstance().getService(
-                FunctionXrefService.SERVICE_NAME, FunctionXrefService.class);
-        
-        // If it doesn't exist, create and register it
-        if (service == null) {
-            service = new FunctionXrefService();
-            ServiceRegistry.getInstance().registerService(service);
-        }
-        
-        return service;
-    }
-    
+
+    // Removed getOrCreateFunctionXrefService method - service retrieval happens in handlers
+
     @Override
     public void registerEndpoints() {
         HttpServer server = getServer();
@@ -53,13 +43,13 @@ public class FunctionXrefHttpHandler extends BaseHttpHandler {
             Msg.error(this, "Cannot register endpoints: server is null");
             return;
         }
-        
+
         // Register all endpoints
         server.createContext("/xrefs", this::handleXrefsAtAddress);
-        
+
         Msg.info(this, "Registered Function Xref endpoints");
     }
-    
+
     /**
      * Handle xrefs at address request.
      */
@@ -68,18 +58,24 @@ public class FunctionXrefHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         // Parse parameters from the query string
         Map<String, String> params = parseQueryParams(exchange);
         String address = params.get("address");
-        
+
         // Validate parameters
         if (address == null || address.isEmpty()) {
             sendErrorResponse(exchange, "Address is required");
             return;
         }
-        
-        Map<String, Object> result = functionXrefService.getReferencesAtAddress(address);
+
+        // Retrieve service instance
+        FunctionXrefService service = getService(FunctionXrefService.SERVICE_NAME, FunctionXrefService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, FunctionXrefService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.getReferencesAtAddress(address);
         sendJsonResponse(exchange, result);
     }
 }

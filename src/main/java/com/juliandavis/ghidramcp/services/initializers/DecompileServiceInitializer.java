@@ -14,10 +14,10 @@ import com.juliandavis.ghidramcp.services.DecompileService;
  * and for registering the corresponding HTTP handler with the endpoint registry.
  */
 public class DecompileServiceInitializer extends BaseServiceInitializer<DecompileService, DecompileHttpHandler> {
-    
+
     /**
      * Create a new DecompileServiceInitializer.
-     * 
+     *
      * @param plugin the GhidraMCPPlugin instance
      * @param serviceRegistry the service registry
      * @param endpointRegistry the endpoint registry
@@ -28,17 +28,18 @@ public class DecompileServiceInitializer extends BaseServiceInitializer<Decompil
             EndpointRegistry endpointRegistry) {
         super(plugin, serviceRegistry, endpointRegistry);
     }
-    
+
     @Override
     protected DecompileService createService() {
-        return new DecompileService();
+        // Get the PluginTool from the plugin instance and pass it to the service constructor
+        return new DecompileService(plugin.getTool());
     }
-    
+
     @Override
     protected DecompileHttpHandler createHttpHandler() {
         return new DecompileHttpHandler(plugin);
     }
-    
+
     @Override
     protected String getServiceName() {
         return DecompileService.SERVICE_NAME;

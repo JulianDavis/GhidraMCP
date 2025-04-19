@@ -13,7 +13,8 @@ import java.util.Map;
  */
 public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
 
-    private final MemoryCrossReferenceService memoryCrossReferenceService;
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final MemoryCrossReferenceService memoryCrossReferenceService; // Removed final field
 
     /**
      * Constructor for the MemoryCrossReferenceHttpHandler.
@@ -22,7 +23,8 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
      */
     public MemoryCrossReferenceHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        this.memoryCrossReferenceService = getOrCreateMemoryCrossReferenceService();
+        // Constructor no longer initializes the service field
+        // this.memoryCrossReferenceService = getOrCreateMemoryCrossReferenceService();
     }
 
     @Override
@@ -40,7 +42,7 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
             if (isGetRequest(exchange)) {
                 Map<String, String> queryParams = parseQueryParams(exchange);
                 String targetAddress = queryParams.get("address");
-                
+
                 if (targetAddress == null || targetAddress.isEmpty()) {
                     sendJsonResponse(exchange, createErrorResponse("Address parameter is required"));
                     return;
@@ -53,7 +55,13 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
                 int maxScanResults = parseInt(queryParams.get("maxScanResults"), 100);
 
                 // Find references
-                Map<String, Object> results = memoryCrossReferenceService.findAllReferences(
+                // Retrieve service instance
+                MemoryCrossReferenceService service = getService(MemoryCrossReferenceService.SERVICE_NAME, MemoryCrossReferenceService.class);
+                if (service == null) {
+                    sendErrorResponse(exchange, MemoryCrossReferenceService.SERVICE_NAME + " not available.", 503);
+                    return;
+                }
+                Map<String, Object> results = service.findAllReferences(
                         currentProgram,
                         targetAddress,
                         includeMemoryScan,
@@ -67,7 +75,7 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
             } else if (isPostRequest(exchange)) {
                 Map<String, String> params = parsePostParams(exchange);
                 String targetAddress = params.get("address");
-                
+
                 if (targetAddress == null || targetAddress.isEmpty()) {
                     sendJsonResponse(exchange, createErrorResponse("Address parameter is required"));
                     return;
@@ -80,7 +88,13 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
                 int maxScanResults = parseInt(params.get("maxScanResults"), 100);
 
                 // Find references
-                Map<String, Object> results = memoryCrossReferenceService.findAllReferences(
+                // Retrieve service instance
+                MemoryCrossReferenceService service = getService(MemoryCrossReferenceService.SERVICE_NAME, MemoryCrossReferenceService.class);
+                 if (service == null) {
+                    sendErrorResponse(exchange, MemoryCrossReferenceService.SERVICE_NAME + " not available.", 503);
+                    return;
+                }
+                Map<String, Object> results = service.findAllReferences(
                         currentProgram,
                         targetAddress,
                         includeMemoryScan,
@@ -120,19 +134,6 @@ public class MemoryCrossReferenceHttpHandler extends BaseHttpHandler {
             return defaultValue;
         }
     }
-    
-    /**
-     * Get or create the MemoryCrossReferenceService instance
-     * 
-     * @return The MemoryCrossReferenceService instance
-     */
-    private MemoryCrossReferenceService getOrCreateMemoryCrossReferenceService() {
-        MemoryCrossReferenceService service = getService(MemoryCrossReferenceService.SERVICE_NAME, MemoryCrossReferenceService.class);
-        if (service == null) {
-            service = new MemoryCrossReferenceService();
-            // Register the service with the service registry
-            plugin.getServiceRegistry().registerService(service);
-        }
-        return service;
-    }
+
+    // Removed getOrCreateMemoryCrossReferenceService method - service retrieval happens in handlers
 }

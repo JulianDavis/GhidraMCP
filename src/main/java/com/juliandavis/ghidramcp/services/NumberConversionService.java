@@ -145,7 +145,7 @@ public class NumberConversionService implements Service {
             String ascii = null;
             boolean isAscii = true;
             StringBuilder asciiBuilder = new StringBuilder();
-            
+
             for (byte b : bytes) {
                 if (b >= 32 && b <= 126) {
                     asciiBuilder.append((char) b);
@@ -156,7 +156,7 @@ public class NumberConversionService implements Service {
                     break; // Stop at null byte
                 }
             }
-            
+
             if (isAscii && asciiBuilder.length() > 0) {
                 ascii = asciiBuilder.toString();
             }

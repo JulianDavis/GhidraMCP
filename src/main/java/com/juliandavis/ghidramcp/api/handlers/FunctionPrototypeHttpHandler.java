@@ -21,7 +21,8 @@ import ghidra.util.Msg;
  */
 public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
 
-    private final FunctionPrototypeService functionPrototypeService;
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final FunctionPrototypeService functionPrototypeService; // Removed final field
 
     /**
      * Create a new FunctionPrototypeHttpHandler.
@@ -32,29 +33,11 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
         super(plugin);
 
         // Get or create the FunctionPrototypeService
-        functionPrototypeService = getOrCreateFunctionPrototypeService();
+        // Constructor no longer initializes the service field
+        // functionPrototypeService = getOrCreateFunctionPrototypeService();
     }
 
-    private FunctionPrototypeService getOrCreateFunctionPrototypeService() {
-        // Try to get the existing service
-        FunctionPrototypeService service = ServiceRegistry.getInstance().getService(
-                FunctionPrototypeService.SERVICE_NAME, FunctionPrototypeService.class);
-
-        // If it doesn't exist, create and register it
-        if (service == null) {
-            // Ensure we have the plugin instance to get the tool
-            if (plugin == null) {
-                 // This shouldn't happen if the handler is constructed correctly, but handle defensively
-                 Msg.error(this, "Cannot create FunctionPrototypeService: GhidraMCPPlugin instance is null.");
-                 // Depending on desired behavior, could throw an exception or return null
-                 return null; // Or throw new IllegalStateException(...)
-            }
-            service = new FunctionPrototypeService(plugin.getTool()); // Pass PluginTool to constructor
-            ServiceRegistry.getInstance().registerService(service);
-        }
-
-        return service;
-    }
+    // Removed getOrCreateFunctionPrototypeService method - service retrieval happens in handlers
 
     @Override
     public void registerEndpoints() {
@@ -131,7 +114,13 @@ public class FunctionPrototypeHttpHandler extends BaseHttpHandler {
 
         // Call the service to set the function prototype
         // Call the service (updateTypeStr removed)
-        Map<String, Object> result = functionPrototypeService.setFunctionPrototype(
+        // Retrieve service instance
+        FunctionPrototypeService service = getService(FunctionPrototypeService.SERVICE_NAME, FunctionPrototypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, FunctionPrototypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.setFunctionPrototype(
                 functionName, returnType, parameterDefinitions, callingConvention, renameOptionStr);
 
         sendJsonResponse(exchange, result);

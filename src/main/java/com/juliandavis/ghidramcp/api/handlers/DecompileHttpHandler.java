@@ -7,6 +7,7 @@ import java.util.Map;
 import com.juliandavis.ghidramcp.GhidraMCPPlugin;
 import com.juliandavis.ghidramcp.core.service.ServiceRegistry;
 import com.juliandavis.ghidramcp.services.DecompileService;
+import com.juliandavis.ghidramcp.services.FunctionPrototypeService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
@@ -19,7 +20,8 @@ import ghidra.util.Msg;
  */
 public class DecompileHttpHandler extends BaseHttpHandler {
 
-    private final DecompileService decompileService;
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final DecompileService decompileService; // Removed final field
 
     /**
      * Create a new DecompileHttpHandler.
@@ -28,24 +30,10 @@ public class DecompileHttpHandler extends BaseHttpHandler {
      */
     public DecompileHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-
-        // Get or create the DecompileService
-        decompileService = getOrCreateDecompileService();
+        // Constructor no longer initializes the service field
     }
 
-    private DecompileService getOrCreateDecompileService() {
-        // Try to get the existing service
-        DecompileService service = ServiceRegistry.getInstance().getService(
-                DecompileService.SERVICE_NAME, DecompileService.class);
-
-        // If it doesn't exist, create and register it
-        if (service == null) {
-            service = new DecompileService();
-            ServiceRegistry.getInstance().registerService(service);
-        }
-
-        return service;
-    }
+    // Removed getOrCreateDecompileService method - service retrieval happens in handlers
 
     @Override
     public void registerEndpoints() {
@@ -62,7 +50,8 @@ public class DecompileHttpHandler extends BaseHttpHandler {
         server.createContext("/defineFunction", this::handleDefineFunction);
         server.createContext("/renameFunction", this::handleRenameFunction);
         server.createContext("/renameData", this::handleRenameData);
-        server.createContext("/decompiler/renameVariable", this::handleRenameVariable); // Add new endpoint
+        server.createContext("/decompiler/renameVariable", this::handleRenameVariable);
+        server.createContext("/decompiler/setVariableDataType", this::handleSetVariableDataType); // Register new endpoint
 
         Msg.info(this, "Registered Decompile endpoints");
     }
@@ -84,7 +73,14 @@ public class DecompileHttpHandler extends BaseHttpHandler {
             return;
         }
 
-        Map<String, Object> result = decompileService.decompileFunctionByName(name);
+        // Retrieve service instance
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.decompileFunctionByName(name);
         sendJsonResponse(exchange, result);
     }
 
@@ -113,7 +109,14 @@ public class DecompileHttpHandler extends BaseHttpHandler {
             return;
         }
 
-        Map<String, Object> result = decompileService.decompileAddressRange(startAddress, endAddress);
+        // Retrieve service instance
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.decompileAddressRange(startAddress, endAddress);
         sendJsonResponse(exchange, result);
     }
 
@@ -136,7 +139,14 @@ public class DecompileHttpHandler extends BaseHttpHandler {
             return;
         }
 
-        Map<String, Object> result = decompileService.identifyFunctionAtAddress(address);
+        // Retrieve service instance
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.identifyFunctionAtAddress(address);
         sendJsonResponse(exchange, result);
     }
 
@@ -161,7 +171,14 @@ public class DecompileHttpHandler extends BaseHttpHandler {
             return;
         }
 
-        Map<String, Object> result = decompileService.defineFunctionAtAddress(address, name, force);
+        // Retrieve service instance
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.defineFunctionAtAddress(address, name, force);
         sendJsonResponse(exchange, result);
     }
 
@@ -202,7 +219,14 @@ public class DecompileHttpHandler extends BaseHttpHandler {
             return;
         }
 
-        Map<String, Object> result = decompileService.renameFunction(oldName, newName);
+        // Retrieve service instance
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.renameFunction(oldName, newName);
         sendJsonResponse(exchange, result);
     }
 
@@ -243,7 +267,14 @@ public class DecompileHttpHandler extends BaseHttpHandler {
             return;
         }
 
-        Map<String, Object> result = decompileService.renameDataAtAddress(address, newName);
+        // Retrieve service instance
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.renameDataAtAddress(address, newName);
         sendJsonResponse(exchange, result);
     }
 
@@ -289,7 +320,67 @@ public class DecompileHttpHandler extends BaseHttpHandler {
         }
 
         // Call the service method (to be implemented)
-        Map<String, Object> result = decompileService.renameVariableInFunction(functionName, variableName, newName);
+        // Retrieve service instance
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.renameVariableInFunction(functionName, variableName, newName);
+        sendJsonResponse(exchange, result);
+    }
+
+    /**
+     * Handle set variable data type request.
+     */
+    private void handleSetVariableDataType(HttpExchange exchange) throws IOException {
+        if (!isPostRequest(exchange)) {
+            sendMethodNotAllowedResponse(exchange);
+            return;
+        }
+
+        // Expect JSON request body
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        Map<String, Object> params;
+
+        if (contentType != null && contentType.contains("application/json")) {
+            params = parseJsonRequest(exchange);
+        } else {
+            sendErrorResponse(exchange, "Content-Type must be application/json");
+            return;
+        }
+
+        // Get parameters from JSON
+        String functionName = (String) params.get("functionName");
+        String variableName = (String) params.get("variableName");
+        String dataTypeName = (String) params.get("dataTypeName");
+
+        // Validate parameters
+        if (functionName == null || functionName.isEmpty()) {
+            sendErrorResponse(exchange, "Function name (functionName) is required");
+            return;
+        }
+
+        if (variableName == null || variableName.isEmpty()) {
+            sendErrorResponse(exchange, "Variable name (variableName) is required");
+            return;
+        }
+
+        if (dataTypeName == null || dataTypeName.isEmpty()) {
+            sendErrorResponse(exchange, "Data type name (dataTypeName) is required");
+            return;
+        }
+
+        // Call the service method
+        // Retrieve service instance
+        DecompileService service = getService(DecompileService.SERVICE_NAME, DecompileService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DecompileService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+
+        Map<String, Object> result = service.setVariableDataType(functionName, variableName, dataTypeName);
         sendJsonResponse(exchange, result);
     }
 }

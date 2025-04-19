@@ -13,7 +13,8 @@ import java.util.Map;
  */
 public class NumberConversionHttpHandler extends BaseHttpHandler {
 
-    private final NumberConversionService numberConversionService;
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final NumberConversionService numberConversionService; // Removed final field
 
     /**
      * Creates a new NumberConversionHttpHandler.
@@ -22,7 +23,8 @@ public class NumberConversionHttpHandler extends BaseHttpHandler {
      */
     public NumberConversionHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        this.numberConversionService = getOrCreateNumberConversionService();
+        // Constructor no longer initializes the service field
+        // this.numberConversionService = getOrCreateNumberConversionService();
     }
 
     /**
@@ -39,12 +41,12 @@ public class NumberConversionHttpHandler extends BaseHttpHandler {
                     Map<String, String> params = parseQueryParams(exchange);
                     String text = params.get("text");
                     String sizeStr = params.get("size");
-                    
+
                     if (text == null || text.isEmpty()) {
                         sendErrorResponse(exchange, "Missing required parameter: text");
                         return;
                     }
-                    
+
                     Integer size = null;
                     if (sizeStr != null && !sizeStr.isEmpty()) {
                         try {
@@ -54,21 +56,27 @@ public class NumberConversionHttpHandler extends BaseHttpHandler {
                             return;
                         }
                     }
-                    
-                    Map<String, Object> response = numberConversionService.convertNumber(text, size);
+
+                    // Retrieve service instance
+                    NumberConversionService service = getService(NumberConversionService.SERVICE_NAME, NumberConversionService.class);
+                    if (service == null) {
+                        sendErrorResponse(exchange, NumberConversionService.SERVICE_NAME + " not available.", 503);
+                        return;
+                    }
+                    Map<String, Object> response = service.convertNumber(text, size);
                     sendJsonResponse(exchange, response);
                 } else if (isPostRequest(exchange)) {
                     // Handle POST request with JSON body
                     Map<String, Object> requestMap = parseJsonRequest(exchange);
-                    
+
                     if (!requestMap.containsKey("text")) {
                         sendErrorResponse(exchange, "Missing required parameter: text");
                         return;
                     }
-                    
+
                     String text = requestMap.get("text").toString();
                     Integer size = null;
-                    
+
                     if (requestMap.containsKey("size")) {
                         try {
                             size = Integer.parseInt(requestMap.get("size").toString());
@@ -77,8 +85,14 @@ public class NumberConversionHttpHandler extends BaseHttpHandler {
                             return;
                         }
                     }
-                    
-                    Map<String, Object> response = numberConversionService.convertNumber(text, size);
+
+                    // Retrieve service instance
+                    NumberConversionService service = getService(NumberConversionService.SERVICE_NAME, NumberConversionService.class);
+                    if (service == null) {
+                        sendErrorResponse(exchange, NumberConversionService.SERVICE_NAME + " not available.", 503);
+                        return;
+                    }
+                    Map<String, Object> response = service.convertNumber(text, size);
                     sendJsonResponse(exchange, response);
                 } else {
                     sendMethodNotAllowedResponse(exchange);
@@ -94,18 +108,5 @@ public class NumberConversionHttpHandler extends BaseHttpHandler {
         });
     }
 
-    /**
-     * Gets or creates the NumberConversionService instance.
-     *
-     * @return The NumberConversionService instance
-     */
-    private NumberConversionService getOrCreateNumberConversionService() {
-        NumberConversionService service = getService(NumberConversionService.SERVICE_NAME, NumberConversionService.class);
-        if (service == null) {
-            service = new NumberConversionService();
-            // Register the service with the service registry
-            plugin.getServiceRegistry().registerService(service);
-        }
-        return service;
-    }
+    // Removed getOrCreateNumberConversionService method - service retrieval happens in handlers
 }

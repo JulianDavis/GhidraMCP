@@ -23,6 +23,9 @@ bin/
 # VS Code
 .vscode/
 
+# Roo AI Agent
+.roo/
+
 # macOS
 .DS_Store
 .AppleDouble

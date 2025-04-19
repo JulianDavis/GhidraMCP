@@ -16,18 +16,20 @@ import java.util.Map;
 public class EmulatorHttpHandler extends BaseHttpHandler {
 
     private final Map<Program, String> programEmulatorSessions = new HashMap<>();
-    private final EmulatorService emulatorService;
-    
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final EmulatorService emulatorService; // Removed final field
+
     /**
      * Create a new EmulatorHttpHandler
-     * 
+     *
      * @param plugin The GhidraMCPPlugin instance
      */
     public EmulatorHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        this.emulatorService = getOrCreateEmulatorService();
+        // Constructor no longer initializes the service field
+        // this.emulatorService = getOrCreateEmulatorService();
     }
-    
+
     /**
      * Register all endpoints with the HTTP server
      */
@@ -38,394 +40,538 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
             Map<String, String> params = parsePostParams(exchange);
             String addressStr = params.get("address");
             boolean writeTracking = Boolean.parseBoolean(params.getOrDefault("writeTracking", "true"));
-            
+
             Map<String, Object> response = initializeEmulator(addressStr, writeTracking);
             sendJsonResponse(exchange, response);
         });
-        
+
         // Step emulator
         getServer().createContext("/emulator/step", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.step(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.step(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Run emulator
         getServer().createContext("/emulator/run", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             int maxSteps = Integer.parseInt(params.getOrDefault("maxSteps", "1000"));
             boolean stopOnBreakpoint = Boolean.parseBoolean(params.getOrDefault("stopOnBreakpoint", "true"));
             String stopAddress = params.get("stopAddress");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.run(session.getId(), maxSteps, stopOnBreakpoint, stopAddress);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.run(session.getId(), maxSteps, stopOnBreakpoint, stopAddress);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get emulator state
         getServer().createContext("/emulator/getState", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getState(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getState(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get memory writes
         getServer().createContext("/emulator/getWrites", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getWrites(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getWrites(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Reset emulator
         getServer().createContext("/emulator/reset", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.reset(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.reset(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Set breakpoint
         getServer().createContext("/emulator/setBreakpoint", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.setBreakpoint(session.getId(), address);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.setBreakpoint(session.getId(), address);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Clear breakpoint
         getServer().createContext("/emulator/clearBreakpoint", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.clearBreakpoint(session.getId(), address);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.clearBreakpoint(session.getId(), address);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get breakpoints
         getServer().createContext("/emulator/getBreakpoints", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getBreakpoints(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getBreakpoints(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Set conditional breakpoint
         getServer().createContext("/emulator/setConditionalBreakpoint", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
             String condition = params.get("condition");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.setConditionalBreakpoint(session.getId(), address, condition);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.setConditionalBreakpoint(session.getId(), address, condition);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get conditional breakpoints
         getServer().createContext("/emulator/getConditionalBreakpoints", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getConditionalBreakpoints(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getConditionalBreakpoints(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Set register value
         getServer().createContext("/emulator/setRegister", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String register = params.get("register");
             String value = params.get("value");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.setRegisterValue(session.getId(), register, value);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.setRegisterValue(session.getId(), register, value);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get register value
         getServer().createContext("/emulator/getRegister", exchange -> {
             Map<String, String> params = parseQueryParams(exchange);
             String register = params.get("register");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getRegisterValue(session.getId(), register);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getRegisterValue(session.getId(), register);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get all registers
         getServer().createContext("/emulator/getRegisters", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getRegisters(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getRegisters(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Write memory
         getServer().createContext("/emulator/writeMemory", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String address = params.get("address");
             String bytesHex = params.get("bytes_hex");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.writeMemory(session.getId(), address, bytesHex);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.writeMemory(session.getId(), address, bytesHex);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Read memory
         getServer().createContext("/emulator/readMemory", exchange -> {
             Map<String, String> params = parseQueryParams(exchange);
             String address = params.get("address");
             int length = Integer.parseInt(params.getOrDefault("length", "16"));
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.readMemory(session.getId(), address, length);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.readMemory(session.getId(), address, length);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Set memory read tracking
         getServer().createContext("/emulator/setMemoryReadTracking", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             boolean enable = Boolean.parseBoolean(params.getOrDefault("enable", "true"));
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.setMemoryReadTracking(session.getId(), enable);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.setMemoryReadTracking(session.getId(), enable);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get memory reads
         getServer().createContext("/emulator/getReads", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getReads(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getReads(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Set stack change tracking
         getServer().createContext("/emulator/setStackChangeTracking", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             boolean enable = Boolean.parseBoolean(params.getOrDefault("enable", "true"));
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.setStackChangeTracking(session.getId(), enable);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.setStackChangeTracking(session.getId(), enable);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get stack trace
         getServer().createContext("/emulator/getStackTrace", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getStackTrace(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getStackTrace(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Import memory
         getServer().createContext("/emulator/importMemory", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String fromAddress = params.get("from_address");
             String length = params.get("length");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.importMemory(session.getId(), fromAddress, length);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.importMemory(session.getId(), fromAddress, length);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get register changes
         getServer().createContext("/emulator/getRegisterChanges", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getRegisterChanges(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getRegisterChanges(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get stdout content
         getServer().createContext("/emulator/getStdout", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getStdoutContent(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getStdoutContent(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Get stderr content
         getServer().createContext("/emulator/getStderr", exchange -> {
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.getStderrContent(session.getId());
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.getStderrContent(session.getId());
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
-        
+
         // Provide stdin data
         getServer().createContext("/emulator/provideStdin", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String data = params.get("data");
-            
+
             EmulatorSession session = getValidatedSession();
             Map<String, Object> response;
-            
+
             if (session == null) {
                 response = createErrorResponse("No valid emulator session for current program");
             } else {
-                response = emulatorService.provideStdinData(session.getId(), data);
+                // Retrieve service instance
+                EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+                 if (service == null) {
+                    response = createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+                } else {
+                    response = service.provideStdinData(session.getId(), data);
+                }
             }
-            
+
             sendJsonResponse(exchange, response);
         });
     }
-    
+
     /**
      * Initialize the emulator at the specified address
-     * 
+     *
      * @param addressStr The address to initialize at
      * @param writeTracking Whether to enable write tracking
      * @return A Map containing the result of the operation
@@ -435,46 +581,38 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         if (program == null) {
             return createErrorResponse("No program loaded");
         }
-        
+
         // Check if there's already a session for this program
         String existingSessionId = programEmulatorSessions.get(program);
         if (existingSessionId != null) {
             // Remove the existing session from the registry
             programEmulatorSessions.remove(program);
         }
-        
+
+        // Retrieve service instance
+        EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+        if (service == null) {
+            return createErrorResponse(EmulatorService.SERVICE_NAME + " not available.", 503);
+        }
         // Initialize a new emulator
-        Map<String, Object> result = emulatorService.initialize(addressStr, writeTracking);
-        
+        Map<String, Object> result = service.initialize(addressStr, writeTracking);
+
         // Check if initialization succeeded
         if (!result.containsKey("error") && result.containsKey("sessionId")) {
             // Store the session ID for the current program
             programEmulatorSessions.put(program, (String) result.get("sessionId"));
-            Msg.info(this, "Initialized emulator for program: " + program.getName() + 
+            Msg.info(this, "Initialized emulator for program: " + program.getName() +
                     " with session: " + result.get("sessionId"));
         }
-        
+
         return result;
     }
-    
-    /**
-     * Get or create the EmulatorService instance
-     * 
-     * @return The EmulatorService instance
-     */
-    private EmulatorService getOrCreateEmulatorService() {
-        EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
-        if (service == null) {
-            service = new EmulatorService();
-            // Register the service with the service registry
-            plugin.getServiceRegistry().registerService(service);
-        }
-        return service;
-    }
-    
+
+    // Removed getOrCreateEmulatorService method - service retrieval happens in handlers
+
     /**
      * Helper method to retrieve and validate the emulator session for the current program.
-     * 
+     *
      * @return The validated EmulatorSession or null if validation fails
      */
     private EmulatorSession getValidatedSession() {
@@ -483,14 +621,20 @@ public class EmulatorHttpHandler extends BaseHttpHandler {
         if (program == null) {
             return null;
         }
-        
+
         // Get session for current program
         String sessionId = programEmulatorSessions.get(program);
         if (sessionId == null) {
             return null;
         }
-        
+
         // Get and validate the session
-        return emulatorService.getSession(sessionId);
+        // Retrieve service instance
+        EmulatorService service = getService(EmulatorService.SERVICE_NAME, EmulatorService.class);
+        if (service == null) {
+            Msg.error(this, EmulatorService.SERVICE_NAME + " not available when validating session.");
+            return null;
+        }
+        return service.getSession(sessionId);
     }
 }

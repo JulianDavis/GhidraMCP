@@ -13,7 +13,8 @@ import java.util.Map;
  */
 public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
 
-    private final MemoryPatternSearchService memoryPatternSearchService;
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final MemoryPatternSearchService memoryPatternSearchService; // Removed final field
 
     /**
      * Constructor for the MemoryPatternSearchHttpHandler.
@@ -22,7 +23,8 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
      */
     public MemoryPatternSearchHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        this.memoryPatternSearchService = getOrCreateMemoryPatternSearchService();
+        // Constructor no longer initializes the service field
+        // this.memoryPatternSearchService = getOrCreateMemoryPatternSearchService();
     }
 
     @Override
@@ -40,7 +42,7 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
             if (isGetRequest(exchange)) {
                 Map<String, String> queryParams = parseQueryParams(exchange);
                 String pattern = queryParams.get("pattern");
-                
+
                 if (pattern == null || pattern.isEmpty()) {
                     sendJsonResponse(exchange, createErrorResponse("Pattern parameter is required"));
                     return;
@@ -53,7 +55,14 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
                 int maxResults = parseInt(queryParams.get("maxResults"), 100);
 
                 // Search for pattern
-                Map<String, Object> result = memoryPatternSearchService.searchForPattern(
+                // Retrieve service instance
+                MemoryPatternSearchService service = getService(MemoryPatternSearchService.SERVICE_NAME, MemoryPatternSearchService.class);
+                if (service == null) {
+                    sendErrorResponse(exchange, MemoryPatternSearchService.SERVICE_NAME + " not available.", 503);
+                    return;
+                }
+
+                Map<String, Object> result = service.searchForPattern(
                         currentProgram,
                         pattern,
                         searchExecutable,
@@ -68,7 +77,7 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
             } else if (isPostRequest(exchange)) {
                 Map<String, String> params = parsePostParams(exchange);
                 String pattern = params.get("pattern");
-                
+
                 if (pattern == null || pattern.isEmpty()) {
                     sendJsonResponse(exchange, createErrorResponse("Pattern parameter is required"));
                     return;
@@ -81,7 +90,14 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
                 int maxResults = parseInt(params.get("maxResults"), 100);
 
                 // Search for pattern
-                Map<String, Object> result = memoryPatternSearchService.searchForPattern(
+                // Retrieve service instance
+                MemoryPatternSearchService service = getService(MemoryPatternSearchService.SERVICE_NAME, MemoryPatternSearchService.class);
+                 if (service == null) {
+                    sendErrorResponse(exchange, MemoryPatternSearchService.SERVICE_NAME + " not available.", 503);
+                    return;
+                }
+
+                Map<String, Object> result = service.searchForPattern(
                         currentProgram,
                         pattern,
                         searchExecutable,
@@ -122,19 +138,6 @@ public class MemoryPatternSearchHttpHandler extends BaseHttpHandler {
             return defaultValue;
         }
     }
-    
-    /**
-     * Get or create the MemoryPatternSearchService instance
-     * 
-     * @return The MemoryPatternSearchService instance
-     */
-    private MemoryPatternSearchService getOrCreateMemoryPatternSearchService() {
-        MemoryPatternSearchService service = getService(MemoryPatternSearchService.SERVICE_NAME, MemoryPatternSearchService.class);
-        if (service == null) {
-            service = new MemoryPatternSearchService();
-            // Register the service with the service registry
-            plugin.getServiceRegistry().registerService(service);
-        }
-        return service;
-    }
+
+    // Removed getOrCreateMemoryPatternSearchService method - service retrieval happens in handlers
 }

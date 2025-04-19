@@ -454,7 +454,14 @@ public class DataTypeService implements Service {
         // Create data for the success response
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("name", structure.getName());
-        responseData.put("id", structure.getUniversalID().getValue());
+        
+        // Safely handle nullable UniversalID
+        if (structure.getUniversalID() != null) {
+            responseData.put("id", structure.getUniversalID().getValue());
+        } else {
+            responseData.put("id", null); // Use null when UniversalID is not available
+        }
+        
         responseData.put("category", structure.getCategoryPath().getPath());
         responseData.put("size", structure.getLength());
         responseData.put("alignment", structure.getAlignment());
@@ -817,8 +824,20 @@ public class DataTypeService implements Service {
         dataTypeInfo.put("name", dt.getName());
         dataTypeInfo.put("category", dt.getCategoryPath().getPath());
         dataTypeInfo.put("size", dt.getLength());
-        dataTypeInfo.put("id", dt.getUniversalID().getValue());
-        dataTypeInfo.put("isBuiltIn", dt.getSourceArchive().getArchiveType() == ArchiveType.BUILT_IN);
+        
+        // Safely handle nullable UniversalID
+        if (dt.getUniversalID() != null) {
+            dataTypeInfo.put("id", dt.getUniversalID().getValue());
+        } else {
+            dataTypeInfo.put("id", null); // Use null when UniversalID is not available
+        }
+        
+        // Safely check source archive (which might also be null for some data types)
+        if (dt.getSourceArchive() != null) {
+            dataTypeInfo.put("isBuiltIn", dt.getSourceArchive().getArchiveType() == ArchiveType.BUILT_IN);
+        } else {
+            dataTypeInfo.put("isBuiltIn", false); // Default assumption
+        }
 
         if (dt.getDescription() != null && !dt.getDescription().isEmpty()) {
             dataTypeInfo.put("description", dt.getDescription());
@@ -1122,8 +1141,20 @@ public class DataTypeService implements Service {
         Map<String, Object> dataTypeInfo = new HashMap<>();
         dataTypeInfo.put("name", dt.getName());
         dataTypeInfo.put("size", dt.getLength());
-        dataTypeInfo.put("id", dt.getUniversalID().getValue());
-        dataTypeInfo.put("isBuiltIn", dt.getSourceArchive().getArchiveType() == ArchiveType.BUILT_IN);
+        
+        // Safely handle nullable UniversalID
+        if (dt.getUniversalID() != null) {
+            dataTypeInfo.put("id", dt.getUniversalID().getValue());
+        } else {
+            dataTypeInfo.put("id", null); // Use null when UniversalID is not available
+        }
+        
+        // Safely check source archive (which might also be null for some data types)
+        if (dt.getSourceArchive() != null) {
+            dataTypeInfo.put("isBuiltIn", dt.getSourceArchive().getArchiveType() == ArchiveType.BUILT_IN);
+        } else {
+            dataTypeInfo.put("isBuiltIn", false); // Default assumption
+        }
 
         if (dt instanceof Structure) {
             dataTypeInfo.put("type", "Structure");

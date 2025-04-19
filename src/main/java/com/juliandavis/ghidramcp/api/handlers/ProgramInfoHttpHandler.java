@@ -16,7 +16,8 @@ import java.util.Map;
  */
 public class ProgramInfoHttpHandler extends BaseHttpHandler {
 
-    private final ProgramInfoService programInfoService;
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final ProgramInfoService programInfoService; // Removed final field
 
     /**
      * Constructor for the ProgramInfoHttpHandler.
@@ -25,9 +26,10 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
      */
     public ProgramInfoHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        this.programInfoService = getOrCreateProgramInfoService();
+        // Constructor no longer initializes the service field
+        // this.programInfoService = getOrCreateProgramInfoService();
     }
-    
+
     /**
      * Register all endpoints for this handler.
      */
@@ -46,10 +48,10 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
         getServer().createContext("/classes", this::handleGetClasses);
         getServer().createContext("/data", this::handleGetData);
         getServer().createContext("/searchFunctions", this::handleSearchFunctions);
-        
+
         Msg.info(this, "Registered program information endpoints");
     }
-    
+
     /**
      * Handle get program info request
      */
@@ -58,13 +60,19 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         boolean includeDetailedStats = "full".equals(params.get("detail"));
-        
-        sendJsonResponse(exchange, programInfoService.getProgramMetadata(includeDetailedStats));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.getProgramMetadata(includeDetailedStats));
     }
-    
+
     /**
      * Handle get all function names request
      */
@@ -73,14 +81,20 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         int offset = parseIntOrDefault(params.get("offset"), 0);
         int limit = parseIntOrDefault(params.get("limit"), 100);
-        
-        sendJsonResponse(exchange, programInfoService.getAllFunctionNames(offset, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.getAllFunctionNames(offset, limit));
     }
-    
+
     /**
      * Handle get function statistics request
      */
@@ -89,14 +103,20 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         String continuationToken = params.get("continuationToken");
         int limit = parseIntOrDefault(params.get("limit"), 500);
-        
-        sendJsonResponse(exchange, programInfoService.getFunctionStats(continuationToken, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.getFunctionStats(continuationToken, limit));
     }
-    
+
     /**
      * Handle get segments request
      */
@@ -105,14 +125,20 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         int offset = parseIntOrDefault(params.get("offset"), 0);
         int limit = parseIntOrDefault(params.get("limit"), 100);
-        
-        sendJsonResponse(exchange, programInfoService.listSegments(offset, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.listSegments(offset, limit));
     }
-    
+
     /**
      * Handle get imports request
      */
@@ -121,14 +147,20 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         int offset = parseIntOrDefault(params.get("offset"), 0);
         int limit = parseIntOrDefault(params.get("limit"), 100);
-        
-        sendJsonResponse(exchange, programInfoService.listImports(offset, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.listImports(offset, limit));
     }
-    
+
     /**
      * Handle get exports request
      */
@@ -137,14 +169,20 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         int offset = parseIntOrDefault(params.get("offset"), 0);
         int limit = parseIntOrDefault(params.get("limit"), 100);
-        
-        sendJsonResponse(exchange, programInfoService.listExports(offset, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.listExports(offset, limit));
     }
-    
+
     /**
      * Handle get namespaces request
      */
@@ -153,14 +191,20 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         int offset = parseIntOrDefault(params.get("offset"), 0);
         int limit = parseIntOrDefault(params.get("limit"), 100);
-        
-        sendJsonResponse(exchange, programInfoService.listNamespaces(offset, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.listNamespaces(offset, limit));
     }
-    
+
     /**
      * Handle get classes request
      */
@@ -169,14 +213,20 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         int offset = parseIntOrDefault(params.get("offset"), 0);
         int limit = parseIntOrDefault(params.get("limit"), 100);
-        
-        sendJsonResponse(exchange, programInfoService.getAllClassNames(offset, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.getAllClassNames(offset, limit));
     }
-    
+
     /**
      * Handle get data items request
      */
@@ -185,14 +235,20 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         int offset = parseIntOrDefault(params.get("offset"), 0);
         int limit = parseIntOrDefault(params.get("limit"), 100);
-        
-        sendJsonResponse(exchange, programInfoService.listDefinedData(offset, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.listDefinedData(offset, limit));
     }
-    
+
     /**
      * Handle search functions request
      */
@@ -201,21 +257,27 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         String searchTerm = params.get("query");
-        
+
         if (searchTerm == null || searchTerm.isEmpty()) {
             sendErrorResponse(exchange, "Search term is required");
             return;
         }
-        
+
         int offset = parseIntOrDefault(params.get("offset"), 0);
         int limit = parseIntOrDefault(params.get("limit"), 100);
-        
-        sendJsonResponse(exchange, programInfoService.searchFunctionsByName(searchTerm, offset, limit));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.searchFunctionsByName(searchTerm, offset, limit));
     }
-    
+
     /**
      * Handle get symbol statistics request
      */
@@ -224,15 +286,21 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         String continuationToken = params.get("continuationToken");
         int limit = parseIntOrDefault(params.get("limit"), 5000);
         String symbolType = params.get("symbolType"); // Optional filter
-        
-        sendJsonResponse(exchange, programInfoService.getSymbolStats(continuationToken, limit, symbolType));
+
+        // Retrieve service instance
+        ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        sendJsonResponse(exchange, service.getSymbolStats(continuationToken, limit, symbolType));
     }
-    
+
     /**
      * Handle get data type statistics request
      */
@@ -241,26 +309,19 @@ public class ProgramInfoHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parseQueryParams(exchange);
         String continuationToken = params.get("continuationToken");
         int limit = parseIntOrDefault(params.get("limit"), 5000);
-        
-        sendJsonResponse(exchange, programInfoService.getDataTypeStats(continuationToken, limit));
-    }
-    
-    /**
-     * Get or create the ProgramInfoService instance
-     * 
-     * @return The ProgramInfoService instance
-     */
-    private ProgramInfoService getOrCreateProgramInfoService() {
+
+        // Retrieve service instance
         ProgramInfoService service = getService(ProgramInfoService.SERVICE_NAME, ProgramInfoService.class);
         if (service == null) {
-            service = new ProgramInfoService();
-            // Register the service with the service registry
-            plugin.getServiceRegistry().registerService(service);
+            sendErrorResponse(exchange, ProgramInfoService.SERVICE_NAME + " not available.", 503);
+            return;
         }
-        return service;
+        sendJsonResponse(exchange, service.getDataTypeStats(continuationToken, limit));
     }
+
+    // Removed getOrCreateProgramInfoService method - service retrieval happens in handlers
 }

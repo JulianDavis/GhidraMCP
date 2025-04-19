@@ -13,7 +13,8 @@ import java.util.Map;
  */
 public class StringExtractionHttpHandler extends BaseHttpHandler {
 
-    private final StringExtractionService stringExtractionService;
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final StringExtractionService stringExtractionService; // Removed final field
 
     /**
      * Constructor for the StringExtractionHttpHandler.
@@ -22,7 +23,8 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
      */
     public StringExtractionHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        this.stringExtractionService = getOrCreateStringExtractionService();
+        // Constructor no longer initializes the service field
+        // this.stringExtractionService = getOrCreateStringExtractionService();
     }
 
     @Override
@@ -39,7 +41,7 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
             String method = exchange.getRequestMethod();
             if (isGetRequest(exchange)) {
                 Map<String, String> queryParams = parseQueryParams(exchange);
-                
+
                 // Parse parameters
                 int minLength = parseInt(queryParams.get("minLength"), 4);
                 String encodingStr = queryParams.get("encoding");
@@ -50,7 +52,13 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
                 int maxResults = parseInt(queryParams.get("maxResults"), 1000);
 
                 // Extract strings
-                Map<String, Object> result = stringExtractionService.extractStrings(
+                // Retrieve service instance
+                StringExtractionService service = getService(StringExtractionService.SERVICE_NAME, StringExtractionService.class);
+                if (service == null) {
+                    sendErrorResponse(exchange, StringExtractionService.SERVICE_NAME + " not available.", 503);
+                    return;
+                }
+                Map<String, Object> result = service.extractStrings(
                         currentProgram,
                         minLength,
                         encoding,
@@ -65,7 +73,7 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
                 sendJsonResponse(exchange, result);
             } else if (isPostRequest(exchange)) {
                 Map<String, String> params = parsePostParams(exchange);
-                
+
                 // Parse parameters
                 int minLength = parseInt(params.get("minLength"), 4);
                 String encodingStr = params.get("encoding");
@@ -76,7 +84,13 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
                 int maxResults = parseInt(params.get("maxResults"), 1000);
 
                 // Extract strings
-                Map<String, Object> result = stringExtractionService.extractStrings(
+                // Retrieve service instance
+                StringExtractionService service = getService(StringExtractionService.SERVICE_NAME, StringExtractionService.class);
+                 if (service == null) {
+                    sendErrorResponse(exchange, StringExtractionService.SERVICE_NAME + " not available.", 503);
+                    return;
+                }
+                Map<String, Object> result = service.extractStrings(
                         currentProgram,
                         minLength,
                         encoding,
@@ -102,7 +116,7 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
         if (encoding == null) {
             return StringExtractionService.StringEncoding.ALL;
         }
-        
+
         try {
             return StringExtractionService.StringEncoding.valueOf(encoding.toUpperCase());
         } catch (IllegalArgumentException e) {
@@ -133,19 +147,6 @@ public class StringExtractionHttpHandler extends BaseHttpHandler {
             return defaultValue;
         }
     }
-    
-    /**
-     * Get or create the StringExtractionService instance
-     * 
-     * @return The StringExtractionService instance
-     */
-    private StringExtractionService getOrCreateStringExtractionService() {
-        StringExtractionService service = getService(StringExtractionService.SERVICE_NAME, StringExtractionService.class);
-        if (service == null) {
-            service = new StringExtractionService();
-            // Register the service with the service registry
-            plugin.getServiceRegistry().registerService(service);
-        }
-        return service;
-    }
+
+    // Removed getOrCreateStringExtractionService method - service retrieval happens in handlers
 }

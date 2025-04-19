@@ -901,6 +901,48 @@ def rename_variable(function_name: str, variable_name: str, new_name: str) -> Di
         logger.error(f"Received unexpected response type for rename_variable: {type(response)}")
         # Convert string/other response to dict for consistency
         return ErrorResult.from_string(f"Unexpected response type: {str(response)}").error
+@mcp.tool()
+def set_variable_data_type(function_name: str, variable_name: str, data_type_name: str) -> Dict[str, Any]:
+    """
+    Set the data type for a local variable within a function's decompiled view.
+
+    Args:
+        function_name: The name of the function containing the variable.
+        variable_name: The current name of the variable to re-type.
+        data_type_name: The name of the data type to apply (e.g., "int", "AI_LogContext").
+
+    Returns:
+        Dictionary with success status and message.
+    """
+    logger.info(f"Attempting to set data type of variable '{variable_name}' to '{data_type_name}' in function '{function_name}'")
+    response = safe_post("/decompiler/setVariableDataType", {
+        "functionName": function_name,
+        "variableName": variable_name,
+        "dataTypeName": data_type_name
+    })
+
+    # Basic response handling, similar to rename_variable
+    if isinstance(response, dict):
+        # Check for standardized success/error format
+        if "status" in response:
+            if response.get("status") == "success":
+                logger.info(f"Successfully set data type for variable '{variable_name}'")
+                # Return the data part or the whole response if no data field
+                return response.get("data", response)
+            else:
+                logger.error(f"Failed to set variable data type: {response.get('error', response)}")
+                # Return the error structure using ErrorResult for consistency
+                return ErrorResult.from_dict(response).error
+        else:
+             # Assume success if no status field but it's a dict (legacy?)
+             logger.warning("Received non-standard success response for set_variable_data_type.")
+             return response
+    else:
+        logger.error(f"Received unexpected response type for set_variable_data_type: {type(response)}")
+        # Convert string/other response to dict for consistency
+        return ErrorResult.from_string(f"Unexpected response type: {str(response)}").error
+
+
 
 @mcp.tool()
 def list_segments(offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:

@@ -1,24 +1,26 @@
 package com.juliandavis.ghidramcp.services;
 
 import com.juliandavis.ghidramcp.api.util.ResponseUtil;
-import ghidra.program.model.symbol.Symbol; // Correct import for Symbol
+import ghidra.program.model.symbol.Symbol;
 import com.juliandavis.ghidramcp.core.service.Service;
 
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
-import ghidra.program.model.pcode.HighFunctionDBUtil; // Correct import for the utility class
-import ghidra.program.model.data.DataType;                 // Import DataType
+import ghidra.program.model.data.DataType;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.Variable;        // Import Variable
-import ghidra.program.model.listing.VariableStorage; // Import VariableStorage
+import ghidra.program.model.listing.Variable;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.SourceType;
-// Removed redundant Symbol import (already imported on line 4)
 import ghidra.util.Msg;
 import ghidra.util.task.ConsoleTaskMonitor;
 
 import java.util.*;
+import ghidra.app.cmd.function.SetVariableDataTypeCmd;
+import ghidra.framework.plugintool.PluginTool;
+import ghidra.program.model.listing.FunctionManager;
+import ghidra.program.model.data.DataTypeManager;
+import ghidra.program.model.data.DataTypeConflictHandler;
 
 /**
  * Service for decompiling code and managing functions in Ghidra.
@@ -27,6 +29,12 @@ public class DecompileService implements Service {
 
     public static final String SERVICE_NAME = "DecompileService";
     private Program program;
+    private PluginTool tool; // Add field to store the tool
+     // Constructor to accept PluginTool
+     public DecompileService(PluginTool tool) {
+         this.tool = tool;
+     }
+
 
     /**
      * Get the service name
@@ -76,13 +84,7 @@ public class DecompileService implements Service {
 
         try {
             // Find the function by name
-            Function function = null;
-            for (Function func : program.getFunctionManager().getFunctions(true)) {
-                if (func.getName().equals(name)) {
-                    function = func;
-                    break;
-                }
-            }
+            Function function = findFunctionByName(name); // Use helper
 
             if (function == null) {
                 return ResponseUtil.createErrorResponse("Function not found: " + name);
@@ -449,13 +451,7 @@ public class DecompileService implements Service {
 
         try {
             // Find the function by name
-            Function function = null;
-            for (Function func : program.getFunctionManager().getFunctions(true)) {
-                if (func.getName().equals(oldName)) {
-                    function = func;
-                    break;
-                }
-            }
+            Function function = findFunctionByName(oldName); // Use helper
 
             if (function == null) {
                 return ResponseUtil.createErrorResponse("Function not found: " + oldName);
@@ -511,9 +507,8 @@ public class DecompileService implements Service {
             return ResponseUtil.createErrorResponse("New name is required");
         }
 
-        // Check if the new name is valid
         if (!isValidSymbolName(newName)) {
-            return ResponseUtil.createErrorResponse("Invalid symbol name: " + newName);
+            return ResponseUtil.createErrorResponse("Invalid data name: " + newName);
         }
 
         boolean success = false;
@@ -525,39 +520,21 @@ public class DecompileService implements Service {
                 return ResponseUtil.createErrorResponse("Invalid address: " + addressStr);
             }
 
-            // Check if there is data at this address
-            if (program.getListing().getDataAt(address) == null) {
-                return ResponseUtil.createErrorResponse("No data found at address: " + addressStr);
+            Symbol symbol = program.getSymbolTable().getPrimarySymbol(address);
+            if (symbol == null) {
+                return ResponseUtil.createErrorResponse("No primary symbol found at address: " + addressStr);
             }
 
-            // Get the symbol at this address
-            Symbol primarySymbol = program.getSymbolTable().getPrimarySymbol(address);
-            if (primarySymbol == null) {
-                // No symbol exists, create a new one
-                int tx = program.startTransaction("Create label at " + address);
-                try {
-                    program.getSymbolTable().createLabel(address, newName, SourceType.USER_DEFINED);
-                    success = true;
-                    message = "Created new label at " + addressStr;
-                } catch (Exception e) {
-                    message = "Failed to create label: " + e.getMessage();
-                    Msg.error(this, message, e);
-                } finally {
-                    program.endTransaction(tx, success);
-                }
-            } else {
-                // Symbol exists, rename it
-                int tx = program.startTransaction("Rename data at " + address);
-                try {
-                    primarySymbol.setName(newName, SourceType.USER_DEFINED);
-                    success = true;
-                    message = "Renamed successfully";
-                } catch (Exception e) {
-                    message = "Rename failed: " + e.getMessage();
-                    Msg.error(this, message, e);
-                } finally {
-                    program.endTransaction(tx, success);
-                }
+            int tx = program.startTransaction("Rename data at " + addressStr + " to " + newName);
+            try {
+                symbol.setName(newName, SourceType.USER_DEFINED);
+                success = true;
+                message = "Data renamed successfully";
+            } catch (Exception e) {
+                message = "Rename failed: " + e.getMessage();
+                Msg.error(this, message, e);
+            } finally {
+                program.endTransaction(tx, success);
             }
 
             Map<String, Object> response = new HashMap<>();
@@ -566,13 +543,7 @@ public class DecompileService implements Service {
             response.put("newName", newName);
             response.put("message", message);
 
-            // Include data details if available
-            if (program.getListing().getDataAt(address) != null) {
-                response.put("dataType", program.getListing().getDataAt(address).getDataType().getName());
-                response.put("dataValue", program.getListing().getDataAt(address).getDefaultValueRepresentation());
-            }
-
-            return ResponseUtil.createSuccessResponse(response); // Already correct, but included for completeness
+            return ResponseUtil.createSuccessResponse(response);
         } catch (Exception e) {
             Msg.error(this, "Error renaming data", e);
             return ResponseUtil.createErrorResponse("Error: " + e.getMessage());
@@ -580,219 +551,241 @@ public class DecompileService implements Service {
     }
 
 
-/**
- * Rename a variable within a function's decompiled view.
- *
- * @param functionName The name of the function containing the variable.
- * @param variableName The current name of the variable to rename.
- * @param newName      The new name for the variable.
- * @return Map containing the result of the rename operation.
- */
-public Map<String, Object> renameVariableInFunction(String functionName, String variableName, String newName) {
-        // Removed declaration from here. It will be declared below.
-    if (program == null) {
-        return ResponseUtil.createErrorResponse("No program loaded");
-    }
-
-    if (functionName == null || functionName.isEmpty()) {
-        return ResponseUtil.createErrorResponse("Function name is required");
-    }
-
-    if (variableName == null || variableName.isEmpty()) {
-        return ResponseUtil.createErrorResponse("Current variable name is required");
-    }
-
-    if (newName == null || newName.isEmpty()) {
-        return ResponseUtil.createErrorResponse("New variable name is required");
-    }
-
-    // Validate the new name
-    if (!isValidSymbolName(newName)) {
-        return ResponseUtil.createErrorResponse("Invalid new variable name: " + newName);
-    }
-
-    DecompInterface decomp = null;
-    boolean success = false;
-    String message = "Variable rename failed";
-    Symbol targetSymbol = null;
-    ghidra.program.model.pcode.HighSymbol targetHighSymbol = null; // Declare targetHighSymbol here
-    Function function = null;
-
-    try {
-        // Find the function by name
-        for (Function func : program.getFunctionManager().getFunctions(true)) {
-            if (func.getName().equals(functionName)) {
-                function = func;
-                break;
-            }
+    /**
+     * Rename a variable within a function's decompiled view
+     *
+     * @param functionName The name of the function containing the variable.
+     * @param variableName The current name of the variable to rename.
+     * @param newName      The new name for the variable.
+     * @return Map containing the result of the rename operation.
+     */
+    public Map<String, Object> renameVariableInFunction(String functionName, String variableName, String newName) {
+        if (program == null) {
+            return ResponseUtil.createErrorResponse("No program loaded");
+        }
+        if (functionName == null || functionName.isEmpty() || variableName == null || variableName.isEmpty() || newName == null || newName.isEmpty()) {
+            return ResponseUtil.createErrorResponse("Missing required parameters: functionName, variableName, newName");
         }
 
+        if (!isValidSymbolName(newName)) {
+            return ResponseUtil.createErrorResponse("Invalid variable name: " + newName);
+        }
+
+        Function function = findFunctionByName(functionName); // Use helper
         if (function == null) {
             return ResponseUtil.createErrorResponse("Function not found: " + functionName);
         }
 
-        // Decompile to get HighFunction
-        decomp = new DecompInterface();
-        decomp.openProgram(program);
-        DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
-
-        if (results == null || !results.decompileCompleted()) {
-            String errorMsg = results != null ? results.getErrorMessage() : "Unknown decompilation error";
-            return ResponseUtil.createErrorResponse("Decompilation failed for function '" + functionName + "': " + errorMsg);
-        }
-
-        ghidra.program.model.pcode.HighFunction highFunction = results.getHighFunction();
-        if (highFunction == null) {
-            return ResponseUtil.createErrorResponse("Could not get HighFunction for '" + functionName + "'");
-        }
-
-        ghidra.program.model.pcode.LocalSymbolMap symbolMap = highFunction.getLocalSymbolMap();
-        Iterator<ghidra.program.model.pcode.HighSymbol> symbolIterator = symbolMap.getSymbols();
-        while (symbolIterator.hasNext()) {
-            ghidra.program.model.pcode.HighSymbol highSymbol = symbolIterator.next();
-            if (highSymbol.getName().equals(variableName)) {
-                targetHighSymbol = highSymbol;
-                targetSymbol = highSymbol.getSymbol();
-                break;
-            }
-        }
-
-        // Check if we found the HighSymbol
-        if (targetHighSymbol == null) {
+        Variable variable = findVariableByName(function, variableName); // Use helper
+        if (variable == null) {
             return ResponseUtil.createErrorResponse("Variable '" + variableName + "' not found in function '" + functionName + "'");
         }
 
-        // Attempt to rename using HighFunctionDBUtil.updateDBVariable within a transaction
-        int tx = program.startTransaction("Rename variable " + variableName + " to " + newName + " in " + functionName);
+        boolean success = false;
+        String message;
+        int tx = program.startTransaction("Rename variable " + variableName + " in " + functionName);
         try {
-            // Use the utility function to handle the rename/update in the database
-            // Pass the existing data type as we only want to rename
-            HighFunctionDBUtil.updateDBVariable(targetHighSymbol, newName, targetHighSymbol.getDataType(), SourceType.USER_DEFINED);
-            success = true; // Assume success if no exception is thrown
-            message = "Variable '" + variableName + "' renamed to '" + newName + "' successfully";
-            Msg.info(this, message + " in function " + functionName);
-            // Try to get the symbol now, it should exist after the update
-            targetSymbol = targetHighSymbol.getSymbol();
-
-        } catch (ghidra.util.exception.InvalidInputException e) {
-            message = "Rename failed: Invalid name '" + newName + "'. " + e.getMessage();
+            variable.setName(newName, SourceType.USER_DEFINED);
+            // Optionally, update the source type if needed
+            // variable.setSource(SourceType.USER_DEFINED);
+            success = true;
+            message = "Variable renamed successfully";
+        } catch (Exception e) {
+            message = "Rename failed: " + e.getMessage();
             Msg.error(this, message, e);
-            success = false;
-        } catch (Exception e) { // Catch other potential exceptions during updateDBVariable
-            message = "Rename failed due to unexpected exception: " + e.getClass().getName() + " - " + e.getMessage();
-            Msg.error(this, message, e);
-            success = false;
         } finally {
             program.endTransaction(tx, success);
         }
 
-    } catch (Exception e) { // Catch exceptions during the overall process (finding function, decompiling etc.)
-        message = "Error during rename variable process: " + e.getMessage();
-        Msg.error(this, message, e);
-        success = false; // Ensure success is false if we land here
-    } finally { // Ensure decompiler is disposed
-        if (decomp != null) {
-            decomp.dispose();
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", success);
+        response.put("functionName", functionName);
+        response.put("variableName", variableName);
+        response.put("newName", newName);
+        response.put("message", message);
+
+        if (success) {
+            // Optionally include updated variable details
+            Map<String, Object> varDetails = new HashMap<>();
+            varDetails.put("name", variable.getName());
+            varDetails.put("dataType", variable.getDataType().getPathName());
+            varDetails.put("storage", variable.getVariableStorage().toString());
+            response.put("variable", varDetails);
         }
-    }
 
-    // Prepare response
-    Map<String, Object> response = new HashMap<>();
-    response.put("success", success);
-    response.put("functionName", functionName);
-    response.put("variableName", variableName);
-    response.put("newName", newName);
-    response.put("message", message);
-
-    if (success && targetSymbol != null) {
-         Map<String, Object> symbolDetails = new HashMap<>();
-         symbolDetails.put("name", targetSymbol.getName());
-         symbolDetails.put("address", targetSymbol.getAddress().toString());
-         symbolDetails.put("type", targetSymbol.getSymbolType().toString());
-         response.put("symbol", symbolDetails);
-    }
-
-
-    if (success) {
         return ResponseUtil.createSuccessResponse(response);
-    } else {
-        // Use the existing error response structure but add context
-        Map<String, Object> errorData = new HashMap<>();
-        errorData.put("functionName", functionName);
-        errorData.put("variableName", variableName);
-        errorData.put("newName", newName);
-        // Need to check how createErrorResponse handles extra data or create a new helper
-        // Use the new ResponseUtil, potentially adding context later if needed
-        return ResponseUtil.createErrorResponse(message);
-    }
-}
+    } // End of renameVariableInFunction
 
     /**
-     * Get detailed information about a function
+     * Set the data type for a local variable or parameter within a function.
      *
-     * @param function The function to get details for
-     * @return Map containing function details
+     * @param functionName   The name of the function containing the variable.
+     * @param variableName   The name of the variable (parameter or local) to re-type.
+     * @param dataTypeName   The name/path of the data type to apply (e.g., "/DWORD", "/AI_LogContext").
+     * @return Map containing the result of the operation.
      */
-    private Map<String, Object> getFunctionDetails(Function function) {
-        Map<String, Object> details = new HashMap<>();
-        details.put("name", function.getName());
-        details.put("address", function.getEntryPoint().toString());
-        details.put("signature", function.getSignature().toString());
-        details.put("returnType", function.getReturnType().toString());
-        details.put("parameterCount", function.getParameterCount());
-        details.put("body", Map.of(
-                "minAddress", function.getBody().getMinAddress().toString(),
-                "maxAddress", function.getBody().getMaxAddress().toString(),
-                "numAddresses", function.getBody().getNumAddresses()
-        ));
-
-        // Include namespace information
-        details.put("namespace", function.getParentNamespace().getName());
-
-        // Include calling convention if available
-        if (function.getCallingConvention() != null) {
-            details.put("callingConvention", function.getCallingConvention().toString());
+    public Map<String, Object> setVariableDataType(String functionName, String variableName, String dataTypeName) {
+        if (program == null) {
+            return ResponseUtil.createErrorResponse("No program loaded");
+        }
+        if (functionName == null || functionName.isEmpty() || variableName == null || variableName.isEmpty() || dataTypeName == null || dataTypeName.isEmpty()) {
+            return ResponseUtil.createErrorResponse("Missing required parameters: functionName, variableName, dataTypeName");
         }
 
-        // Include function flags
+        // Use the tool instance stored in the service
+        if (this.tool == null) {
+             Msg.error(this, "PluginTool instance was not injected into DecompileService.");
+             return ResponseUtil.createErrorResponse("PluginTool instance not available in service");
+        }
+
+        Function function = findFunctionByName(functionName);
+        if (function == null) {
+            return ResponseUtil.createErrorResponse("Function not found: " + functionName);
+        }
+
+        Variable variable = findVariableByName(function, variableName);
+        if (variable == null) {
+            Msg.warn(this, "Variable '" + variableName + "' not found by name in function '" + functionName + "'. Name lookup only currently supported.");
+            return ResponseUtil.createErrorResponse("Variable '" + variableName + "' not found by name in function '" + functionName + "'");
+        }
+
+        DataTypeManager dtm = program.getDataTypeManager();
+        // Use findDataType which searches by path
+        DataType dataType = dtm.findDataType(dataTypeName);
+
+        if (dataType == null) {
+             // Optionally, try parsing as a C type string if findDataType fails?
+             // try {
+             //     DataType parsedType = CParserUtils.parseDataType(dataTypeName, dtm);
+             //     if (parsedType != null) dataType = parsedType;
+             // } catch (Exception parseEx) {
+             //     Msg.warn(this, "Failed to parse data type string: " + dataTypeName, parseEx);
+             // }
+             // if (dataType == null) { // Check again after trying parse
+                 return ResponseUtil.createErrorResponse("Data type not found: " + dataTypeName + ". Ensure the full path is provided if necessary (e.g., /DWORD, /Category/MyStruct).");
+             // }
+        }
+
+         // Ensure the data type is resolved against the program's data type manager
+        dataType = dtm.resolve(dataType, DataTypeConflictHandler.DEFAULT_HANDLER);
+
+
+        // Use SetVariableDataTypeCmd(Variable var, DataType type, SourceType source)
+        SetVariableDataTypeCmd cmd = new SetVariableDataTypeCmd(variable, dataType, SourceType.USER_DEFINED);
+
+        boolean success = false;
+        String message = "";
+
+        // Execute the command
+        success = tool.execute(cmd, program);
+        message = success ? "Data type set successfully" : cmd.getStatusMsg(); // Get status message from command
+
+        if (success) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("functionName", functionName);
+            result.put("variableName", variableName);
+            result.put("newDataType", dataType.getPathName()); // Use path name for clarity
+            result.put("message", message);
+            return ResponseUtil.createSuccessResponse(result);
+        } else {
+            Msg.error(this, "Failed to execute SetVariableDataTypeCmd for variable '" + variableName + "': " + message);
+            return ResponseUtil.createErrorResponse("Failed to set data type for variable '" + variableName + "': " + message);
+        }
+    }
+
+    // Helper method to find a variable (parameter or local) by name within a function
+    private Variable findVariableByName(Function function, String variableName) {
+        // Check parameters first
+        for (Variable param : function.getParameters()) {
+            // Handle potential default names like param_1
+            if (param.getName().equals(variableName) || param.getSymbol().getName().equals(variableName)) {
+                return param;
+            }
+        }
+        // Check local variables
+        for (Variable local : function.getLocalVariables()) {
+             if (local.getName().equals(variableName) || local.getSymbol().getName().equals(variableName)) {
+                return local;
+            }
+        }
+        return null; // Not found
+    }
+
+    // Helper method to find function by name (extracted from decompileFunctionByName)
+    private Function findFunctionByName(String name) {
+         FunctionManager fm = program.getFunctionManager();
+         // Try getting function by exact name first
+         Iterator<Function> functions = fm.getFunctions(true); // Use Iterator
+         while (functions.hasNext()) { // Iterate correctly
+             Function func = functions.next();
+             if (func.getName(true).equals(name)) { // Use getName(true) for namespace
+                 return func;
+             }
+             if (func.getName().equals(name)) { // Fallback to name without namespace
+                 return func;
+             }
+         } // End while loop
+         // TODO: Add lookup by address if name fails?
+         return null;
+    }
+
+
+    /**
+     * Helper method to get function details
+     *
+     * @param function The function object
+     * @return Map containing key details about the function
+     */
+     private Map<String, Object> getFunctionDetails(Function function) {
+        Map<String, Object> details = new HashMap<>();
+        details.put("name", function.getName());
+        details.put("namespace", function.getParentNamespace().getName(true));
+        details.put("entryPoint", function.getEntryPoint().toString());
+        details.put("signature", function.getSignature().toString());
+        details.put("stackFrameSize", function.getStackFrame().getFrameSize());
+        details.put("parameterCount", function.getParameterCount());
         details.put("isExternal", function.isExternal());
         details.put("isThunk", function.isThunk());
         details.put("hasVarArgs", function.hasVarArgs());
         details.put("hasNoReturn", function.hasNoReturn());
+        details.put("callingConvention", function.getCallingConventionName());
 
-        // Get parameter details if available
-        List<Map<String, Object>> parameters = new ArrayList<>();
-        for (int i = 0; i < function.getParameterCount(); i++) {
-            Map<String, Object> param = new HashMap<>();
-            param.put("name", function.getParameter(i).getName());
-            param.put("dataType", function.getParameter(i).getDataType().getName());
-            param.put("ordinal", function.getParameter(i).getOrdinal());
-            parameters.add(param);
-        }
-        details.put("parameters", parameters);
+        // Add body information
+        Map<String, Object> bodyDetails = new HashMap<>();
+        bodyDetails.put("minAddress", function.getBody().getMinAddress().toString());
+        bodyDetails.put("maxAddress", function.getBody().getMaxAddress().toString());
+        bodyDetails.put("numAddresses", function.getBody().getNumAddresses());
+        details.put("body", bodyDetails);
 
-        // Add stack frame size if available
-        if (function.getStackFrame() != null) {
-            details.put("stackFrameSize", function.getStackFrame().getFrameSize());
+        // Add parameters
+        List<Map<String, Object>> params = new ArrayList<>();
+        for (Variable param : function.getParameters()) {
+            Map<String, Object> p = new HashMap<>();
+            p.put("name", param.getName());
+            p.put("dataType", param.getDataType().getPathName());
+            p.put("storage", param.getVariableStorage().toString());
+            // Ordinal is only applicable to Parameters
+             if (param instanceof ghidra.program.model.listing.Parameter) { // Check type
+                 p.put("ordinal", ((ghidra.program.model.listing.Parameter)param).getOrdinal()); // Cast and call
+             }
+            params.add(p);
         }
+        details.put("parameters", params);
+
+        // Add return type
+        details.put("returnType", function.getReturnType().getPathName());
 
         return details;
-    }
+     }
 
     /**
-     * Check if a name is valid for a symbol
+     * Helper method to check for valid symbol names
      *
      * @param name The name to check
-     * @return True if the name is valid, false otherwise
+     * @return true if valid, false otherwise
      */
-    private boolean isValidSymbolName(String name) {
-        // Basic validation - can be expanded based on specific requirements
-        if (name == null || name.isEmpty()) {
-            return false;
-        }
-
-        // Check for invalid characters - this is a simplified check
-        return !name.contains(" ") && !name.contains("\t") && !name.contains("\n");
-    }
-
-} // End of DecompileService class
+     private boolean isValidSymbolName(String name) {
+        // Basic check - Ghidra has more complex validation internally
+        return name != null && !name.trim().isEmpty() && !name.contains(" ");
+     }
+} // End of DecompileService

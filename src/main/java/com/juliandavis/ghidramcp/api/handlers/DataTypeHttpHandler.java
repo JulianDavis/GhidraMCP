@@ -17,35 +17,25 @@ import java.util.Map;
  * This handler exposes endpoints for creating, managing, and applying data types.
  */
 public class DataTypeHttpHandler extends BaseHttpHandler {
-    
-    private final DataTypeService dataTypeService;
-    
+
+    // Service instance will be retrieved from the registry on demand in handler methods
+    // private final DataTypeService dataTypeService; // Removed final field
+
     /**
      * Create a new DataTypeHttpHandler.
-     * 
+     *
      * @param plugin the GhidraMCPPlugin instance
      */
     public DataTypeHttpHandler(GhidraMCPPlugin plugin) {
         super(plugin);
-        
+
         // Get or create the DataTypeService
-        dataTypeService = getOrCreateDataTypeService();
+        // Constructor no longer initializes the service field
+        // dataTypeService = getOrCreateDataTypeService();
     }
-    
-    private DataTypeService getOrCreateDataTypeService() {
-        // Try to get the existing service
-        DataTypeService service = ServiceRegistry.getInstance().getService(
-                "DataTypeService", DataTypeService.class);
-        
-        // If it doesn't exist, create and register it
-        if (service == null) {
-            service = new DataTypeService();
-            ServiceRegistry.getInstance().registerService(service);
-        }
-        
-        return service;
-    }
-    
+
+    // Removed getOrCreateDataTypeService method - service retrieval happens in handlers
+
     @Override
     public void registerEndpoints() {
         HttpServer server = getServer();
@@ -53,7 +43,7 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             Msg.error(this, "Cannot register endpoints: server is null");
             return;
         }
-        
+
         // Register DataType endpoints
         server.createContext("/dataTypes/search", this::handleSearchDataTypes);
         server.createContext("/dataTypes/category", this::handleGetDataTypeCategory);
@@ -66,10 +56,10 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
         server.createContext("/dataTypes/createEnum", this::handleCreateEnumDataType);
         server.createContext("/dataTypes/applyEnum", this::handleApplyEnumToMemory);
         server.createContext("/dataTypes/delete", this::handleDeleteDataType);
-        
+
         Msg.info(this, "Registered DataType endpoints");
     }
-    
+
     /**
      * Handle search data types request.
      */
@@ -78,17 +68,23 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> queryParams = parseQueryParams(exchange);
         String searchPattern = queryParams.get("query");
         String categoryPath = queryParams.get("category");
         int offset = parseIntOrDefault(queryParams.get("offset"), 0);
         int limit = parseIntOrDefault(queryParams.get("limit"), 100);
-        
-        Map<String, Object> result = dataTypeService.searchDataTypes(searchPattern, categoryPath, offset, limit);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.searchDataTypes(searchPattern, categoryPath, offset, limit);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle get data type category request.
      */
@@ -97,14 +93,20 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> queryParams = parseQueryParams(exchange);
         String categoryPath = queryParams.get("path");
-        
-        Map<String, Object> result = dataTypeService.getDataTypeCategory(categoryPath);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.getDataTypeCategory(categoryPath);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle create primitive data type request.
      */
@@ -113,21 +115,27 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parsePostParams(exchange);
         String dataTypeName = params.get("dataType");
         String address = params.get("address");
-        
+
         // Validate required parameters
         if (dataTypeName == null || address == null) {
             sendErrorResponse(exchange, "Missing required parameters: dataType and address");
             return;
         }
-        
-        Map<String, Object> result = dataTypeService.createPrimitiveDataType(dataTypeName, address);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.createPrimitiveDataType(dataTypeName, address);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle create string data type request.
      */
@@ -136,22 +144,28 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parsePostParams(exchange);
         String stringType = params.get("stringType");
         String address = params.get("address");
         int length = parseIntOrDefault(params.get("length"), -1);
-        
+
         // Validate required parameters
         if (stringType == null || address == null) {
             sendErrorResponse(exchange, "Missing required parameters: stringType and address");
             return;
         }
-        
-        Map<String, Object> result = dataTypeService.createStringDataType(stringType, address, length);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.createStringDataType(stringType, address, length);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle create array data type request.
      */
@@ -160,22 +174,28 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parsePostParams(exchange);
         String elementType = params.get("elementType");
         String address = params.get("address");
         int numElements = parseIntOrDefault(params.get("numElements"), 1);
-        
+
         // Validate required parameters
         if (elementType == null || address == null) {
             sendErrorResponse(exchange, "Missing required parameters: elementType and address");
             return;
         }
-        
-        Map<String, Object> result = dataTypeService.createArrayDataType(elementType, address, numElements);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.createArrayDataType(elementType, address, numElements);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle create structure data type request.
      */
@@ -184,15 +204,15 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         // Check content-type header
         String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
         Map<String, String> params;
-        
+
         if (contentType != null && contentType.toLowerCase().contains("json")) {
             // Parse as JSON
             Map<String, Object> jsonParams = parseJsonRequest(exchange);
-            
+
             // Convert to string params
             params = new HashMap<>();
             for (Map.Entry<String, Object> entry : jsonParams.entrySet()) {
@@ -204,29 +224,35 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             // Parse as form data (the traditional way)
             params = parsePostParams(exchange);
         }
-        
+
         // Extract parameters
         String name = params.get("name");
         String description = params.get("description");
         boolean packed = Boolean.parseBoolean(params.getOrDefault("packed", "false"));
         int alignment = parseIntOrDefault(params.get("alignment"), 0);
-        
+
         // Debug log the parameters
-        Msg.debug(this, "createStructureDataType parameters: name=" + name + 
-                 ", description=" + description + 
-                 ", packed=" + packed + 
+        Msg.debug(this, "createStructureDataType parameters: name=" + name +
+                 ", description=" + description +
+                 ", packed=" + packed +
                  ", alignment=" + alignment);
-        
+
         // Validate required parameters
         if (name == null) {
             sendErrorResponse(exchange, "Missing required parameter: name");
             return;
         }
-        
-        Map<String, Object> result = dataTypeService.createStructureDataType(name, description, packed, alignment);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.createStructureDataType(name, description, packed, alignment);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle add field to structure request.
      */
@@ -235,15 +261,15 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         // Check content-type header
         String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
         Map<String, String> params;
-        
+
         if (contentType != null && contentType.toLowerCase().contains("json")) {
             // Parse as JSON
             Map<String, Object> jsonParams = parseJsonRequest(exchange);
-            
+
             // Convert to string params
             params = new HashMap<>();
             for (Map.Entry<String, Object> entry : jsonParams.entrySet()) {
@@ -255,24 +281,24 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             // Parse as form data (the traditional way)
             params = parsePostParams(exchange);
         }
-        
+
         String structureName = params.get("structureName");
         String fieldName = params.get("fieldName");
         String fieldType = params.get("fieldType");
         String comment = params.get("comment");
-        
+
         // Debug log the parameters
-        Msg.debug(this, "addFieldToStructure parameters: structureName=" + structureName + 
-                 ", fieldName=" + fieldName + 
-                 ", fieldType=" + fieldType + 
+        Msg.debug(this, "addFieldToStructure parameters: structureName=" + structureName +
+                 ", fieldName=" + fieldName +
+                 ", fieldType=" + fieldType +
                  ", comment=" + comment);
-        
+
         // Validate required parameters
         if (structureName == null || fieldName == null || fieldType == null) {
             sendErrorResponse(exchange, "Missing required parameters: structureName, fieldName, fieldType");
             return;
         }
-        
+
         // Get offset parameter if provided, otherwise -1 indicates "append to end"
         int offset = -1;
         if (params.containsKey("offset")) {
@@ -283,27 +309,39 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
                 return;
             }
         }
-        
+
         // If offset is not specified, find the structure and append to the end
         Map<String, Object> result;
         if (offset >= 0) {
             // Use specified offset
-            result = dataTypeService.addFieldToStructure(structureName, fieldName, fieldType, comment, offset);
+            // Retrieve service instance
+            DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+            if (service == null) {
+                sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+                return; // Exit early if service is not found
+            }
+            result = service.addFieldToStructure(structureName, fieldName, fieldType, comment, offset);
         } else {
+            // Retrieve service instance (needed again here)
+            DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+            if (service == null) {
+                sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+                return; // Exit early if service is not found
+            }
             // Find the structure to calculate its length (append to end)
-            ghidra.program.model.data.DataType structureType = dataTypeService.findDataType(structureName);
+            ghidra.program.model.data.DataType structureType = service.findDataType(structureName);
             if (structureType instanceof ghidra.program.model.data.Structure structure) {
                 int appendOffset = structure.getLength();
-                result = dataTypeService.addFieldToStructure(structureName, fieldName, fieldType, comment, appendOffset);
+                result = service.addFieldToStructure(structureName, fieldName, fieldType, comment, appendOffset);
             } else {
                 // Structure not found or not a structure - pass offset 0 and let error handling in service handle it
-                result = dataTypeService.addFieldToStructure(structureName, fieldName, fieldType, comment, 0);
+                result = service.addFieldToStructure(structureName, fieldName, fieldType, comment, 0);
             }
         }
-        
+
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle apply structure to memory request.
      */
@@ -312,21 +350,27 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parsePostParams(exchange);
         String structureName = params.get("structureName");
         String address = params.get("address");
-        
+
         // Validate required parameters
         if (structureName == null || address == null) {
             sendErrorResponse(exchange, "Missing required parameters: structureName, address");
             return;
         }
-        
-        Map<String, Object> result = dataTypeService.applyStructureToMemory(structureName, address);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.applyStructureToMemory(structureName, address);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle create enum data type request.
      */
@@ -335,18 +379,18 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parsePostParams(exchange);
         String name = params.get("name");
         int valueSize = parseIntOrDefault(params.get("valueSize"), 4);
         String description = params.get("description");
-        
+
         // Validate required parameters
         if (name == null) {
             sendErrorResponse(exchange, "Missing required parameter: name");
             return;
         }
-        
+
         // Parse values map from comma-separated name:value pairs
         Map<String, Long> values = new HashMap<>();
         String valuesStr = params.get("values");
@@ -363,11 +407,17 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
                 }
             }
         }
-        
-        Map<String, Object> result = dataTypeService.createEnumDataType(name, valueSize, values, description);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.createEnumDataType(name, valueSize, values, description);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle apply enum to memory request.
      */
@@ -376,21 +426,27 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parsePostParams(exchange);
         String enumName = params.get("enumName");
         String address = params.get("address");
-        
+
         // Validate required parameters
         if (enumName == null || address == null) {
             sendErrorResponse(exchange, "Missing required parameters: enumName, address");
             return;
         }
-        
-        Map<String, Object> result = dataTypeService.applyEnumToMemory(enumName, address);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.applyEnumToMemory(enumName, address);
         sendJsonResponse(exchange, result);
     }
-    
+
     /**
      * Handle delete data type request.
      */
@@ -399,19 +455,25 @@ public class DataTypeHttpHandler extends BaseHttpHandler {
             sendMethodNotAllowedResponse(exchange);
             return;
         }
-        
+
         Map<String, String> params = parsePostParams(exchange);
         String name = params.get("name");
-        
+
         // Validate required parameters
         if (name == null) {
             sendErrorResponse(exchange, "Missing required parameter: name");
             return;
         }
-        
-        Map<String, Object> result = dataTypeService.deleteDataType(name);
+
+        // Retrieve service instance
+        DataTypeService service = getService(DataTypeService.SERVICE_NAME, DataTypeService.class);
+        if (service == null) {
+            sendErrorResponse(exchange, DataTypeService.SERVICE_NAME + " not available.", 503);
+            return;
+        }
+        Map<String, Object> result = service.deleteDataType(name);
         sendJsonResponse(exchange, result);
     }
-    
+
     // These methods are now provided by BaseHttpHandler, so we don't need to reimplement them
 }

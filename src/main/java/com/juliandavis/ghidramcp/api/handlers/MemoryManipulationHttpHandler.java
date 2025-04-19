@@ -1,6 +1,5 @@
 package com.juliandavis.ghidramcp.api.handlers;
 
-import com.google.gson.Gson;
 import com.juliandavis.ghidramcp.GhidraMCPPlugin; // Import plugin class
 import com.juliandavis.ghidramcp.services.MemoryManipulationService;
 import com.sun.net.httpserver.HttpExchange;
